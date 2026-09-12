@@ -85,9 +85,21 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(_request: Request, exc: RequestValidationError) -> JSONResponse:
+        # Project to the three fields a client can act on. Pydantic's raw errors
+        # carry a `ctx` holding the original exception object, which is not
+        # JSON-serialisable, and an `input` echoing what was submitted — which
+        # would put passwords in error responses.
+        fields = [
+            {
+                "field": ".".join(str(part) for part in error.get("loc", ()) if part != "body"),
+                "message": error.get("msg", "Invalid value."),
+                "type": error.get("type", "invalid"),
+            }
+            for error in exc.errors()
+        ]
         return JSONResponse(
             status_code=422,
-            content=_payload("invalid_request", "Some fields need fixing.") | {"fields": exc.errors()},
+            content=_payload("invalid_request", "Some fields need fixing.") | {"fields": fields},
         )
 
     @app.exception_handler(Exception)

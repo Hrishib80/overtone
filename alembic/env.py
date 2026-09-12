@@ -34,12 +34,26 @@ config.set_main_option("sqlalchemy.url", settings.database_url)
 target_metadata = Base.metadata
 
 
+def _render_item(type_, obj, autogen_context):
+    """Render custom column types as the plain SQLAlchemy type they wrap.
+
+    Migrations must not import application code: this file will still be run
+    years from now, long after `UTCDateTime` may have been renamed or removed,
+    and a migration that imports a model module breaks the moment that happens.
+    """
+    if type_ == "type" and obj.__class__.__name__ == "UTCDateTime":
+        autogen_context.imports.add("import sqlalchemy as sa")
+        return "sa.DateTime(timezone=True)"
+    return False
+
+
 def _configure(connection: Connection | None = None, **kwargs) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
         compare_server_default=True,
+        render_item=_render_item,
         render_as_batch=settings.database_url.startswith("sqlite"),
         **kwargs,
     )

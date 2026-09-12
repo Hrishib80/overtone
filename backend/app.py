@@ -20,6 +20,7 @@ from backend.config import settings
 from backend.database import engine
 from backend.errors import register_error_handlers
 from backend.logging_config import configure_logging, get_logger, request_id_var
+from backend.profile import router as profile_router
 from backend.signaling import router as signaling_router
 
 configure_logging(level=settings.log_level, json_output=settings.emit_json_logs)
@@ -115,6 +116,7 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
 
     app.include_router(auth_router)
+    app.include_router(profile_router)
     app.include_router(chat_router)
     app.include_router(signaling_router)
 

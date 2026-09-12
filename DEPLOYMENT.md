@@ -42,6 +42,37 @@ To adopt an existing database that already has the tables:
 alembic stamp head     # records the baseline without re-running it
 ```
 
+## Reference data and campuses
+
+After migrating, load the seeded reference rows (81 prompts, 38 gender
+identities, 30 sexualities). It upserts, so it is safe to re-run on every
+deploy and picks up edits to the JSON seed files:
+
+```sh
+python scripts/manage.py seed
+```
+
+Then create the campus. Caps are **per segment** — one headline number fills
+one side in a week and starves the other:
+
+```sh
+python scripts/manage.py scope-create \
+    --slug iitm --name "IIT Madras" \
+    --domain smail.iitm.ac.in --domain iitm.ac.in \
+    --cap man=600 --cap woman=600
+```
+
+A segment with no cap row is uncapped. Signups whose email domain matches no
+scope are refused, so the domain list *is* the access control.
+
+```sh
+python scripts/manage.py scope-list        # occupancy and waitlist depth
+python scripts/manage.py waitlist-sweep    # expire stale invites, invite next
+```
+
+`waitlist-sweep` should run on a schedule (hourly is plenty). Without it,
+invitations that nobody claims hold their slot forever.
+
 ## Build and run
 
 ```sh
