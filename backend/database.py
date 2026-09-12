@@ -14,12 +14,14 @@ import enum
 import uuid
 from datetime import UTC, date, datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
     Boolean,
     Column,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -43,6 +45,16 @@ def utcnow() -> datetime:
 
 def generate_uuid() -> str:
     return str(uuid.uuid4())
+
+
+def embedding_column(dim: int):
+    """A pgvector column on Postgres, JSON everywhere else.
+
+    Only Postgres can do the ANN search the pair loop needs; SQLite just has to
+    store and return the numbers so the rest of the pipeline is testable
+    without a database server.
+    """
+    return Vector(dim).with_variant(JSON, "sqlite")
 
 
 class UTCDateTime(TypeDecorator):
@@ -87,6 +99,7 @@ def _make_engine():
         max_overflow=settings.db_max_overflow,
         pool_pre_ping=True,
         future=True,
+        connect_args=settings.db_connect_args,
     )
 
 
@@ -416,16 +429,72 @@ class PromptResponse(Base):
     updated_at = Column(UTCDateTime(), default=utcnow, onupdate=utcnow, nullable=False)
 
 
-class Photo(Base):
-    __tablename__ = "photos"
+class MediaKind(enum.StrEnum):
+    photo = "photo"
+    voice = "voice"
+
+
+class MediaStatus(enum.StrEnum):
+    pending_upload = "pending_upload"  # signed URL issued, bytes not confirmed
+    uploaded = "uploaded"  # bytes present, not yet processed
+    processed = "processed"  # passed the gate and embedded
+    rejected = "rejected"  # failed the gate; see gate_reason
+
+
+class MediaAsset(Base):
+    """One uploaded file. Bytes go straight from the browser to object storage;
+    this row is the only thing that ever touches the API."""
+
+    __tablename__ = "media_assets"
+    __table_args__ = (
+        Index("ix_media_user_kind", "user_id", "kind", "status"),
+        UniqueConstraint("object_key", name="uq_media_object_key"),
+    )
 
     id = Column(String, primary_key=True, default=generate_uuid)
-    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
-    storage_url = Column(String, nullable=False)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(String, nullable=False)
+
+    object_key = Column(String, nullable=False)
+    public_url = Column(String, nullable=True)
+    content_type = Column(String, nullable=False)
+    byte_size = Column(Integer, nullable=True)
+
+    status = Column(String, nullable=False, default=MediaStatus.pending_upload)
     is_primary = Column(Boolean, nullable=False, default=False)
     display_order = Column(Integer, nullable=False, default=0)
-    moderation_passed = Column(String, nullable=False, default="pending")
-    created_at = Column(UTCDateTime(), default=utcnow, nullable=False)
+
+    # Quality gate, from face detection. Populated for photos only.
+    gate_reason = Column(String, nullable=True)
+    face_count = Column(Integer, nullable=True)
+    det_score = Column(Float, nullable=True)
+
+    created_at = Column(UTCDateTime(), nullable=False, default=utcnow)
+    processed_at = Column(UTCDateTime(), nullable=True)
+
+
+class ProfileEmbedding(Base):
+    """The three vectors the pair loop reads.
+
+    Stored separately rather than as one composite: collapsing them at write
+    time would mean re-embedding everyone to change the blend, and the ranking
+    weights are the thing most likely to move.
+    """
+
+    __tablename__ = "profile_embeddings"
+
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+
+    face_vector = Column(embedding_column(512), nullable=True)
+    face_source_id = Column(String, ForeignKey("media_assets.id", ondelete="SET NULL"), nullable=True)
+
+    voice_vector = Column(embedding_column(192), nullable=True)
+    text_vector = Column(embedding_column(1024), nullable=True)
+
+    transcript = Column(Text, nullable=True)
+    transcript_language = Column(String, nullable=True)
+
+    updated_at = Column(UTCDateTime(), nullable=False, default=utcnow, onupdate=utcnow)
 
 
 # --------------------------------------------------------------------------

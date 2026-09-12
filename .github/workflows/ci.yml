@@ -37,6 +37,13 @@ jobs:
       - name: Test
         run: pytest
 
+      - name: Worker starts and reports its models
+        env:
+          ENVIRONMENT: test
+          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          JWT_SECRET_KEY: ci-secret-key-that-is-long-enough-for-checks
+        run: python worker.py --status
+
   migrations:
     name: Migrations apply to Postgres
     runs-on: ubuntu-latest

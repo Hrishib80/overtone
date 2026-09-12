@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # Import every module that defines tables so `Base.metadata` is complete before
 # autogenerate compares it against the database.
 import backend.database  # noqa: F401
+import backend.jobs  # noqa: F401
 from alembic import context
 from backend.config import settings
 from backend.database import Base
@@ -44,6 +45,9 @@ def _render_item(type_, obj, autogen_context):
     if type_ == "type" and obj.__class__.__name__ == "UTCDateTime":
         autogen_context.imports.add("import sqlalchemy as sa")
         return "sa.DateTime(timezone=True)"
+    if type_ == "type" and obj.__class__.__name__ == "Vector":
+        autogen_context.imports.add("import pgvector.sqlalchemy")
+        return f"pgvector.sqlalchemy.Vector(dim={obj.dim})"
     return False
 
 

@@ -4,9 +4,9 @@ One web service: FastAPI serves the built SPA, the API, media and the chat
 WebSocket from a single HTTPS origin. Same-origin keeps login and live chat
 simple and avoids cross-origin credential problems.
 
-A second **worker** service — model inference, moderation, rating updates, pair
-generation — arrives in phase 02. It builds from `requirements-worker.txt` and
-`scripts/fetch_models.py`. Nothing here depends on it yet.
+A second **worker** service runs model inference — face embedding, speaker
+embedding, transcription, text embedding — off the request path. See *The
+worker* below.
 
 ## Environment
 
@@ -18,6 +18,7 @@ Set these on the host, never in source control:
 - `ALLOWED_ORIGINS` — the exact public origin, no trailing slash. A wildcard is
   rejected in production because browser requests carry credentials
 - `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_BUCKET`
+- `SARVAM_API_KEY` — speech-to-text; worker only
 - `SENTRY_DSN` — optional
 - `LOG_LEVEL` — defaults to `INFO`; logs are JSON in production, console elsewhere
 
@@ -83,6 +84,33 @@ docker run -p 8000:8000 --env-file .env overtone
 The image is deliberately small — no torch, no models, no ffmpeg. The container
 listens on `PORT`.
 
+## The worker
+
+A second process, from the same repo:
+
+```sh
+pip install -r requirements-worker.txt
+python scripts/fetch_models.py       # ~2.6 GB, cache it in the image layer
+USE_REAL_MODELS=true python worker.py
+```
+
+It owns every model; the API loads none, which is what keeps the API image
+small. `python worker.py --status` prints which implementation each role would
+use and touches nothing — safe to run anywhere.
+
+**Real models are opt-in outside production.** Without `USE_REAL_MODELS=true`
+the worker runs deterministic stubs, so a development machine never downloads
+gigabytes by surprise. In production they are always on, and a missing model is
+fatal at startup rather than silently degrading.
+
+Speech-to-text needs `SARVAM_API_KEY`. Nothing else needs a credential — face,
+voice and text models are local.
+
+Jobs live in the `jobs` table, so the worker needs only `DATABASE_URL`. A job
+survives a restart, retries with exponential backoff, and is parked as `failed`
+after five attempts with its payload and traceback intact. Anything left
+`running` by a killed worker is requeued after fifteen minutes.
+
 ## Health checks
 
 - `GET /api/health` — liveness. Touches no dependency, so a database blip does
@@ -97,6 +125,14 @@ that request. A user reporting a failure can hand you an id you can grep.
 
 Chat connections are held in process, so **run one web instance** for now.
 Phase 03 moves fanout to Redis pub/sub, after which the tier scales normally.
+
+Workers scale freely: claiming uses `FOR UPDATE SKIP LOCKED`, so several can
+pull from the same table without blocking each other.
+
+The database URL points at Supabase's transaction pooler, which cannot hold
+prepared statements between checkouts. The engine disables asyncpg's statement
+cache automatically when it sees a pooler host — don't remove that, or every
+query after the first fails with a duplicate-prepared-statement error.
 
 ## Frontend
 

@@ -38,6 +38,25 @@ class Settings(BaseSettings):
     supabase_key: str = ""
     supabase_bucket: str = "profile-media"
 
+    # Speech-to-text. Telugu accuracy is why this is Sarvam rather than a
+    # general-purpose provider; see the architecture doc, model stack.
+    sarvam_api_key: str = ""
+    sarvam_base_url: str = "https://api.sarvam.ai"
+
+    # Worker. Real models are opt-in outside production: loading one can pull
+    # gigabytes from HuggingFace, which should never happen because someone ran
+    # a status command.
+    use_real_models: bool | None = None
+    worker_poll_seconds: float = 2.0
+    worker_batch_size: int = 5
+    job_max_attempts: int = 5
+
+    # Uploads. Enforced when the signed URL is issued, not after the bytes
+    # arrive — the whole point of direct-to-storage is that we never hold them.
+    max_photo_bytes: int = 8 * 1024 * 1024
+    max_audio_bytes: int = 2 * 1024 * 1024
+    upload_url_ttl_seconds: int = 600
+
     media_root: Path = Path("media_uploads")
 
     # Kept as a raw string: pydantic-settings JSON-decodes list-typed fields at
@@ -101,6 +120,32 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET_KEY must be at least 32 characters in production.")
 
         return self
+
+    @property
+    def real_models_enabled(self) -> bool:
+        if self.use_real_models is not None:
+            return self.use_real_models
+        return self.is_production
+
+    @property
+    def db_is_postgres(self) -> bool:
+        return self.database_url.startswith(("postgresql", "postgres"))
+
+    @property
+    def db_connect_args(self) -> dict:
+        """Supabase's transaction pooler (pgbouncer) cannot hold prepared
+        statements between checkouts, so asyncpg's statement cache must be off
+        or every query after the first fails with a DuplicatePreparedStatement.
+        """
+        if not self.db_is_postgres:
+            return {}
+        args: dict = {"statement_cache_size": 0}
+        if "pooler.supabase.com" in self.database_url:
+            # asyncpg also caches per-connection type introspection, which the
+            # pooler invalidates the same way.
+            args["prepared_statement_cache_size"] = 0
+            args["server_settings"] = {"jit": "off"}
+        return args
 
     @property
     def emit_json_logs(self) -> bool:
