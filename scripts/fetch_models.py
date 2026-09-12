@@ -63,9 +63,16 @@ FETCHERS = {"face": fetch_face, "voice": fetch_voice, "text": fetch_text}
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("which", nargs="*", choices=[*MODELS, []], default=list(MODELS),
-                        help="which models to fetch (default: all)")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "which",
+        nargs="*",
+        choices=[*MODELS, []],
+        default=list(MODELS),
+        help="which models to fetch (default: all)",
+    )
     args = parser.parse_args()
     targets = args.which or list(MODELS)
 
@@ -77,7 +84,10 @@ def main() -> int:
             FETCHERS[name]()
         except ImportError as exc:
             print(f"  MISSING DEPENDENCY: {exc}", file=sys.stderr)
-            print("  install worker requirements first: pip install -r requirements-worker.txt", file=sys.stderr)
+            print(
+                "  install worker requirements first: pip install -r requirements-worker.txt",
+                file=sys.stderr,
+            )
             failed.append(name)
         except Exception as exc:  # noqa: BLE001 - report and continue to the next model
             print(f"  FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)

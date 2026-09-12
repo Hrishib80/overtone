@@ -1,104 +1,140 @@
-from typing import Dict
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Depends
-from backend.auth import verify_ws_token
-from backend.database import AsyncSessionLocal, ChatMessage, ChatStatus
-from backend.config import ALLOWED_ORIGINS
-import json
+"""Chat WebSocket.
 
+Calls are gone, so this carries only chat, typing and read receipts. The
+connection registry is still per-process — that is the known single-worker
+limit, replaced by Redis pub/sub in phase 03 (see DEPLOYMENT.md).
+
+Security note: the previous version authenticated the token but never checked
+that the connecting user belonged to the room, so anyone holding a match id
+could read and write another pair's conversation. `_is_participant` closes that.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import json
+from typing import Any
+
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from sqlalchemy import or_, select
+
+from backend.auth import verify_ws_token
+from backend.config import settings
+from backend.database import AsyncSessionLocal, ChatMessage, MatchRecord
+from backend.logging_config import get_logger
+
+log = get_logger(__name__)
 router = APIRouter()
 
+RELAYED_TYPES = {"typing", "read-receipt"}
+
+# Close codes
+POLICY_VIOLATION = 1008
+INTERNAL_ERROR = 1011
+
+
 class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
-        self.user_rooms: Dict[str, str] = {}
+    def __init__(self) -> None:
+        self.rooms: dict[str, dict[str, WebSocket]] = {}
 
-    async def connect(self, ws: WebSocket, room_id: str, user_id: str):
-        if room_id not in self.active_connections:
-            self.active_connections[room_id] = {}
-        self.active_connections[room_id][user_id] = ws
-        self.user_rooms[user_id] = room_id
+    async def connect(self, ws: WebSocket, room_id: str, user_id: str) -> None:
+        self.rooms.setdefault(room_id, {})[user_id] = ws
 
-    def disconnect(self, room_id: str, user_id: str):
-        if room_id in self.active_connections:
-            if user_id in self.active_connections[room_id]:
-                del self.active_connections[room_id][user_id]
-            if not self.active_connections[room_id]:
-                del self.active_connections[room_id]
-        if user_id in self.user_rooms:
-            del self.user_rooms[user_id]
+    def disconnect(self, room_id: str, user_id: str) -> None:
+        room = self.rooms.get(room_id)
+        if not room:
+            return
+        room.pop(user_id, None)
+        if not room:
+            self.rooms.pop(room_id, None)
 
-    async def send_to_user(self, room_id: str, user_id: str, message: dict):
-        if room_id in self.active_connections and user_id in self.active_connections[room_id]:
+    async def broadcast(self, room_id: str, message: dict[str, Any], exclude: str | None = None) -> None:
+        for user_id, ws in list(self.rooms.get(room_id, {}).items()):
+            if user_id == exclude:
+                continue
             try:
-                await self.active_connections[room_id][user_id].send_json(message)
-            except RuntimeError:
-                pass # Ignore if disconnected
+                await ws.send_json(message)
+            except (RuntimeError, WebSocketDisconnect):
+                self.disconnect(room_id, user_id)
 
-    async def broadcast_to_room(self, room_id: str, message: dict, exclude_user: str = None):
-        if room_id in self.active_connections:
-            for uid, ws in list(self.active_connections[room_id].items()):
-                if uid != exclude_user:
-                    try:
-                        await ws.send_json(message)
-                    except RuntimeError:
-                        pass # Ignore disconnected websocket
 
 manager = ConnectionManager()
 
+
+async def _is_participant(match_id: str, user_id: str) -> bool:
+    if AsyncSessionLocal is None:
+        return False
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(MatchRecord.id)
+            .where(MatchRecord.id == match_id)
+            .where(or_(MatchRecord.user_a_id == user_id, MatchRecord.user_b_id == user_id))
+        )
+        return result.scalar_one_or_none() is not None
+
+
 @router.websocket("/ws/signal/{room_id}")
-async def websocket_endpoint(websocket: WebSocket, room_id: str, token: str = Query(...)):
+async def chat_socket(websocket: WebSocket, room_id: str, token: str = Query(...)) -> None:
     user_id = verify_ws_token(token)
     if not user_id:
-        await websocket.close(code=1008)
+        await websocket.close(code=POLICY_VIOLATION)
         return
-        
+
     origin = websocket.headers.get("origin")
-    if ALLOWED_ORIGINS != ["*"] and origin not in ALLOWED_ORIGINS:
-        await websocket.close(code=1008)
+    if settings.allowed_origins != ["*"] and origin not in settings.allowed_origins:
+        log.warning("ws_rejected_origin", origin=origin)
+        await websocket.close(code=POLICY_VIOLATION)
+        return
+
+    if not await _is_participant(room_id, user_id):
+        log.warning("ws_rejected_not_participant", room_id=room_id, user_id=user_id)
+        await websocket.close(code=POLICY_VIOLATION)
         return
 
     await websocket.accept()
     await manager.connect(websocket, room_id, user_id)
-    await manager.broadcast_to_room(room_id, {"type": "peer-joined", "user_id": user_id}, exclude_user=user_id)
+    await manager.broadcast(room_id, {"type": "peer-joined", "user_id": user_id}, exclude=user_id)
+    log.info("ws_connected", room_id=room_id, user_id=user_id)
 
     try:
         while True:
-            data = await websocket.receive_text()
-            msg = json.loads(data)
-            msg_type = msg.get("type")
-            if msg_type == "ping":
-                await websocket.send_json({"type": "pong"})
+            raw = await websocket.receive_text()
+            try:
+                message = json.loads(raw)
+            except json.JSONDecodeError:
                 continue
-            
-            if msg_type == "chat-message":
+            if not isinstance(message, dict):
+                continue
+
+            message_type = message.get("type")
+
+            if message_type == "ping":
+                await websocket.send_json({"type": "pong"})
+
+            elif message_type == "chat-message":
+                body = (message.get("message") or {}).get("text")
+                if not isinstance(body, str) or not body.strip():
+                    continue
                 async with AsyncSessionLocal() as db:
-                    message_data = msg.get("message", {})
-                    new_msg = ChatMessage(
-                        match_id=room_id,
-                        from_user_id=user_id,
-                        message_text=message_data.get("text")
+                    db.add(
+                        ChatMessage(
+                            match_id=room_id,
+                            from_user_id=user_id,
+                            message_text=body.strip()[:4000],
+                        )
                     )
-                    db.add(new_msg)
                     await db.commit()
-                await manager.broadcast_to_room(room_id, msg, exclude_user=user_id)
-            elif msg_type in ["typing", "read-receipt"]:
-                if msg_type == "read-receipt":
-                    # Future: Update status in db to read
-                    pass
-                await manager.broadcast_to_room(room_id, msg, exclude_user=user_id)
-            elif msg_type in ["key-exchange", "offer", "answer", "sdp-offer", "sdp-answer", "ice-candidate",
-                              "call-request", "call-accept", "call-reject", "call-end",
-                              "video-request", "video-accept", "video-reject"]:
-                target_user = msg.get("target_user_id")
-                msg["from_user_id"] = user_id
-                if target_user:
-                    await manager.send_to_user(room_id, target_user, msg)
-                else:
-                    await manager.broadcast_to_room(room_id, msg, exclude_user=user_id)
+                await manager.broadcast(room_id, message, exclude=user_id)
+
+            elif message_type in RELAYED_TYPES:
+                await manager.broadcast(room_id, message, exclude=user_id)
+
     except WebSocketDisconnect:
         pass
-    except Exception as e:
-        await websocket.close(code=1011)
+    except Exception:
+        log.exception("ws_error", room_id=room_id, user_id=user_id)
+        with contextlib.suppress(RuntimeError):
+            await websocket.close(code=INTERNAL_ERROR)
     finally:
         manager.disconnect(room_id, user_id)
-        await manager.broadcast_to_room(room_id, {"type": "peer-left", "user_id": user_id}, exclude_user=user_id)
+        await manager.broadcast(room_id, {"type": "peer-left", "user_id": user_id}, exclude=user_id)

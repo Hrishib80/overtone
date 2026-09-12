@@ -1,30 +1,91 @@
-# Production deployment
+# Deployment
 
-This project is deployed as one web service: FastAPI serves the built website, API, media route, and WebSocket route from the same HTTPS address. That avoids cross-origin login failures and keeps live chat on the same connection.
+One web service: FastAPI serves the built SPA, the API, media and the chat
+WebSocket from a single HTTPS origin. Same-origin keeps login and live chat
+simple and avoids cross-origin credential problems.
 
-## Required environment values
+A second **worker** service — model inference, moderation, rating updates, pair
+generation — arrives in phase 02. It builds from `requirements-worker.txt` and
+`scripts/fetch_models.py`. Nothing here depends on it yet.
 
-Set these on the hosting provider, not in source control:
+## Environment
+
+Set these on the host, never in source control:
 
 - `ENVIRONMENT=production`
-- `DATABASE_URL`: PostgreSQL connection URL using `postgresql+asyncpg://`
-- `JWT_SECRET_KEY`: a long random secret (at least 32 bytes)
-- `SUPABASE_URL`, `SUPABASE_KEY`, and `SUPABASE_BUCKET`
-- `PINECONE_API_KEY`, `INDEX_HOST`, and optional `PINECONE_NAMESPACE`
-- `ALLOWED_ORIGINS=https://your-domain.example`
+- `DATABASE_URL` — PostgreSQL, `postgresql+asyncpg://…`
+- `JWT_SECRET_KEY` — at least 32 characters; production refuses to start below that
+- `ALLOWED_ORIGINS` — the exact public origin, no trailing slash. A wildcard is
+  rejected in production because browser requests carry credentials
+- `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_BUCKET`
+- `SENTRY_DSN` — optional
+- `LOG_LEVEL` — defaults to `INFO`; logs are JSON in production, console elsewhere
 
-`ALLOWED_ORIGINS` must be the exact public site origin. A wildcard is intentionally rejected in production because authenticated browser requests use credentials.
+Configuration is validated at import. A production process with a missing or
+weak value fails immediately rather than at the first request.
 
-## Build and start
+## Migrations
 
-Build and run the included Docker image. The application listens on the platform-provided `PORT` value and exposes `GET /api/health` for health checks.
+The schema is owned by Alembic. `create_all` is gone.
 
-Use one application worker for this version. Live chat and call signaling are held in process, so multiple workers require a shared message broker before horizontal scaling.
+```sh
+alembic upgrade head
+```
 
-## Frontend and calls
+Run this as a **release command, before** the new instances roll out — not from
+the container's start command, which would race when several instances boot at
+once. `alembic check` fails CI if the models and migrations have drifted apart.
 
-No `VITE_API_URL` or `VITE_WS_URL` value is needed when using this single-service deployment. The website calls its own `/api` and `/ws` paths.
+To adopt an existing database that already has the tables:
 
-For a separately hosted frontend, configure `VITE_API_URL` as the API origin only, for example `https://api.example.com`, and `VITE_WS_URL` as `wss://api.example.com/ws` before the frontend build.
+```sh
+alembic stamp head     # records the baseline without re-running it
+```
 
-WebRTC uses public STUN by default. For dependable voice and video calls across mobile and restrictive networks, set `VITE_TURN_URL`, `VITE_TURN_USERNAME`, and `VITE_TURN_CREDENTIAL` at frontend build time using a managed TURN provider.
+## Build and run
+
+```sh
+docker build -t overtone .
+docker run -p 8000:8000 --env-file .env overtone
+```
+
+The image is deliberately small — no torch, no models, no ffmpeg. The container
+listens on `PORT`.
+
+## Health checks
+
+- `GET /api/health` — liveness. Touches no dependency, so a database blip does
+  not cause a restart loop.
+- `GET /api/ready` — readiness. Checks the database; returns 503 when it cannot
+  serve. Point the load balancer at this one.
+
+Every response carries `X-Request-ID`, which also appears on every log line for
+that request. A user reporting a failure can hand you an id you can grep.
+
+## Scaling
+
+Chat connections are held in process, so **run one web instance** for now.
+Phase 03 moves fanout to Redis pub/sub, after which the tier scales normally.
+
+## Frontend
+
+No `VITE_API_URL` or `VITE_WS_URL` is needed in this single-service setup — the
+site calls its own `/api` and `/ws` paths. For a separately hosted frontend, set
+`VITE_API_URL` to the API origin and `VITE_WS_URL` to `wss://…/ws` at build time.
+
+Voice and video calling has been removed, so no TURN or STUN configuration is
+required. The microphone permission remains for recording the voice prompt.
+
+## Local development
+
+```sh
+pip install -r requirements-dev.txt
+npm install
+
+alembic upgrade head
+python -m uvicorn backend.app:app --reload    # API on :8000
+npm run dev                                   # Vite on :5173, proxying to :8000
+
+pytest
+ruff check . && ruff format --check .
+```

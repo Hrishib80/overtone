@@ -1,14 +1,18 @@
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-sqlalchemy[asyncio]>=2.0.0
+# API tier only. Model inference lives in the worker — see requirements-worker.txt.
+# Keeping torch and friends out of this file is what keeps the API image small
+# and its deploys fast.
+
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+sqlalchemy[asyncio]>=2.0.30
 asyncpg>=0.29.0
-pinecone>=3.0.0
-sentence-transformers>=2.2.0
-faster-whisper>=0.9.0
+alembic>=1.13.0
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+email-validator>=2.1.0
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
-python-dotenv>=1.0.0
-Pillow>=10.0.0
-httpx>=0.25.0
-pydantic>=2.0.0
-python-multipart>=0.0.6
+bcrypt<4.1
+structlog>=24.1.0
+httpx>=0.27.0
+python-multipart>=0.0.9
