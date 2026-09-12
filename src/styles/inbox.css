@@ -1,0 +1,307 @@
+/* Everything the pair loop produced.
+
+   Deliberately quieter than the pair view. That screen is a game and wants
+   contrast; this one is correspondence with people the viewer already chose,
+   and the same treatment would make it shout. */
+
+.inbox {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: var(--ground);
+}
+
+.inbox__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  padding: var(--s-5) var(--s-4) var(--s-4);
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+  border-bottom: 1px solid var(--rule);
+}
+
+.inbox__title {
+  font-size: var(--t-2);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.inbox__back {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+  font-size: var(--t--1);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.inbox__back:hover {
+  color: var(--ink);
+}
+
+.inbox__body {
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+  padding: var(--s-4);
+  padding-bottom: max(var(--s-6), env(safe-area-inset-bottom));
+  display: grid;
+  gap: var(--s-6);
+  align-content: start;
+}
+
+.inbox__section {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.inbox__section-title {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.inbox__section-note {
+  margin-top: calc(var(--s-3) * -1);
+  color: var(--muted);
+  font-size: var(--t--1);
+  max-width: 46ch;
+}
+
+/* ---- rows ---------------------------------------------------------------- */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3);
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.row:hover {
+  border-color: var(--rule-strong);
+}
+
+/* A row and its dismissal read as one object, so they share a border rather
+   than sitting as two separate cards with a gap between them. */
+.row-pair {
+  display: flex;
+  align-items: stretch;
+  gap: var(--s-2);
+}
+
+.row-pair .row {
+  flex: 1;
+  min-width: 0;
+}
+
+.row__decline {
+  flex: 0 0 auto;
+  padding-inline: var(--s-3);
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  color: var(--muted);
+  font-size: var(--t--1);
+  cursor: pointer;
+}
+
+.row__decline:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.row__avatar {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.row__avatar--blank {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.row__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.row__name {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-weight: 600;
+}
+
+/* Unread as a mark rather than a number: a count invites doing arithmetic
+   about how popular you are, which is the habit this app is built to avoid. */
+.row__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+.row__preview {
+  color: var(--muted);
+  font-size: var(--t--1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row__time {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+
+/* ---- the one opening message -------------------------------------------- */
+
+/* The 560px cap belongs to the takeover on the pair page, where the card is
+   alone on a full-width stage. Here it has a section label above it and has
+   to line up with it. */
+.inbox .unlocked {
+  max-width: none;
+  margin-block: 0;
+}
+
+.unlocked__note {
+  color: var(--muted);
+  font-size: var(--t--1);
+  margin-bottom: var(--s-3);
+}
+
+.unlocked__form {
+  display: grid;
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--rule);
+}
+
+.unlocked__input {
+  width: 100%;
+  padding: var(--s-3);
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+}
+
+.unlocked__actions {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+.unlocked__actions .btn:not(.btn--ghost),
+.unlocked__form .btn {
+  background: var(--blue);
+}
+
+.unlocked__actions .btn:not(.btn--ghost):hover:not(:disabled),
+.unlocked__form .btn:hover:not(:disabled) {
+  background: var(--blue-strong);
+}
+
+/* ---- a thread ------------------------------------------------------------ */
+
+.thread {
+  display: grid;
+  gap: var(--s-4);
+  align-content: start;
+}
+
+.thread__bar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.thread__name {
+  font-size: var(--t-1);
+  font-weight: 700;
+}
+
+/* Sized by its contents, capped rather than filled: a conversation with one
+   message in it must not be stretched to the height of one with fifty. */
+.thread__log {
+  display: grid;
+  gap: var(--s-2);
+  align-content: start;
+  overflow-y: auto;
+  max-height: 58dvh;
+  padding-right: var(--s-1);
+}
+
+.bubble {
+  max-width: min(80%, 44ch);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--radius-lg);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.bubble--mine {
+  justify-self: end;
+  background: var(--blue);
+  color: var(--on-accent);
+}
+
+.bubble--theirs {
+  justify-self: start;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  color: var(--ink);
+}
+
+.thread__form {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.thread__input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--s-3);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+}
+
+.thread__waiting {
+  color: var(--muted);
+  font-size: var(--t--1);
+  font-style: italic;
+}
+
+@media (min-width: 700px) {
+  .inbox__body {
+    padding-inline: var(--s-5);
+  }
+}

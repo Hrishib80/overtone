@@ -144,7 +144,7 @@ a {
   border: 1px solid transparent;
   border-radius: var(--radius);
   background: var(--red);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 650;
   letter-spacing: -0.01em;
   cursor: pointer;

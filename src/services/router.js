@@ -11,6 +11,12 @@ const HOME_FOR_STATUS = {
 
 const PUBLIC_ROUTES = new Set(['/', '/join', '/signin']);
 
+/* Routes an account may visit besides its home. Onboarding stays a funnel —
+   these are the places you can only get to once you are through it. */
+const ALSO_ALLOWED = {
+  active: new Set(['/inbox']),
+};
+
 class Router {
   constructor() {
     this.routes = {};
@@ -47,7 +53,8 @@ class Router {
     if (!me) return null; // still loading; app.js resolves before starting
 
     const home = HOME_FOR_STATUS[me.status] || '/';
-    return path === home ? null : home;
+    if (path === home) return null;
+    return ALSO_ALLOWED[me.status]?.has(path) ? null : home;
   }
 
   async resolve(path) {

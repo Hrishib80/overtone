@@ -27,6 +27,11 @@
   --rule: #d7e3ef;
   --rule-strong: #b9cbdd;
 
+  /* Text that sits on top of an accent fill. The accents invert between
+     themes — dark red becomes light red — so a hardcoded white reads as
+     white-on-pale the moment the theme flips. */
+  --on-accent: #ffffff;
+
   /* Semantic, separate from the accent poles */
   --ok: #0f6b52;
   --ok-wash: #e4f3ed;
@@ -80,6 +85,8 @@
     --ground: #080e15;
     --rule: #1f2e3c;
     --rule-strong: #33475a;
+
+    --on-accent: #071019;
 
     --ok: #4fbf9a;
     --ok-wash: #0f2620;

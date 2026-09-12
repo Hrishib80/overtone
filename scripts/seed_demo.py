@@ -6,6 +6,11 @@ Never point this at anything but a local database.
 
     python scripts/seed_demo.py --scope demo
 
+The pool is sized so the unlock is actually reachable: clearing the Wilson
+bound takes seven comparisons of one person, and a pair may only be shown
+once, so a segment needs at least eight people in it before the mechanic can
+be demonstrated at all.
+
 Portraits are generated as SVG files under MEDIA_ROOT and served by the app's
 own /media_uploads mount, so the demo needs no network and no object storage.
 """
@@ -62,8 +67,16 @@ PEOPLE = [
     ("Kavya", "woman", ["man"], "Architecture", "Long walks that were supposed to be short."),
     ("Sneha", "woman", ["man"], "Literature", "Reading the last page first. I'm not sorry."),
     ("Divya", "woman", ["man"], "Physics", "Explaining things nobody asked about."),
+    ("Anjali", "woman", ["man"], "Medicine", "Remembering what you said three weeks ago."),
+    ("Nandini", "woman", ["man"], "History", "Finding the one good bench on campus."),
+    ("Ishita", "woman", ["man"], "Chemistry", "Making tea for people who didn't ask."),
+    ("Rhea", "woman", ["man"], "Mathematics", "Losing at carrom with dignity."),
+    ("Tara", "woman", ["man"], "Journalism", "Asking one question too many."),
+    ("Lakshmi", "woman", ["man"], "Statistics", "Being early and pretending I wasn't."),
     ("Ravi", "man", ["woman"], "Mechanical", "Fixing things that were working fine."),
     ("Arjun", "man", ["woman"], "Law", "Losing arguments on purpose to see what happens."),
+    ("Karthik", "man", ["woman"], "Electrical", "Naming every stray dog on the road."),
+    ("Vikram", "man", ["woman"], "Philosophy", "Being wrong out loud, quickly."),
 ]
 
 PROMPTS = [

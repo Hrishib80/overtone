@@ -1,4 +1,5 @@
 import { createElement } from '../utils/dom.js';
+import { profileBody } from '../components/profile.js';
 import api from '../services/api.js';
 import store from '../services/store.js';
 import router from '../services/router.js';
@@ -9,38 +10,12 @@ import { toast } from '../utils/toast.js';
    Round 1 is two photographs and nothing else — the choice has to be a snap
    judgement or it measures something different. Round 2 is the same two
    people, days later, with everything showing. The UI difference between
-   them is the mechanic, so the two layouts are deliberately not shared. */
+   them is the mechanic, so the two layouts are deliberately not shared.
 
-const LABELS = {
-  life_partner: 'Life partner',
-  long_term: 'Long-term relationship',
-  long_term_open_to_short: 'Long-term, open to short',
-  short_term_open_to_long: 'Short-term, open to long',
-  short_term: 'Short-term fun',
-  figuring_it_out: 'Figuring it out',
-  monogamy: 'Monogamy',
-  non_monogamy: 'Non-monogamy',
-  yes: 'Yes',
-  sometimes: 'Sometimes',
-  no: 'No',
-  prefer_not_to_say: 'Prefer not to say',
-};
-
-const pretty = (v) => LABELS[v] || String(v).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
-
-/** Fields worth showing under a round-2 profile, in reading order. */
-const VITALS = [
-  ['height_cm', 'Height', (v) => `${v} cm`],
-  ['location', 'Lives in', (v) => v],
-  ['hometown', 'From', (v) => v],
-  ['school', 'College', (v) => v],
-  ['job_title', 'Work', (v) => v],
-  ['dating_intentions', 'Looking for', pretty],
-  ['relationship_type', 'Open to', pretty],
-  ['religion', 'Beliefs', pretty],
-  ['drinking', 'Drinks', pretty],
-  ['smoking', 'Smokes', pretty],
-];
+   The third state is the unlock, and it interrupts on purpose. It is the one
+   moment the loop pays off, and sliding it into a corner as a badge would
+   make a page of photographs out of the only thing here that is about a
+   person. */
 
 export default {
   async render() {
@@ -54,12 +29,14 @@ export default {
     const stage = createElement('main', { className: 'pairs__stage' });
 
     const foot = createElement('footer', { className: 'pairs__foot' });
+    const inboxLink = createElement('button', { className: 'pairs__inbox', type: 'button' }, 'Your people');
+    inboxLink.addEventListener('click', () => router.go('/inbox'));
     const signOut = createElement('button', { className: 'pairs__signout', type: 'button' }, 'Sign out');
     signOut.addEventListener('click', () => {
       store.signOut();
       router.go('/');
     });
-    foot.append(signOut);
+    foot.append(inboxLink, signOut);
 
     page.append(header, stage, foot);
 
@@ -91,12 +68,49 @@ export default {
       return card;
     }
 
+    /* ---- the unlock ---- */
+    function renderUnlock(subject, connectionId) {
+      heading.textContent = connectionId ? 'You both did' : 'You keep choosing them';
+      sub.textContent = connectionId
+        ? 'They picked you too, so there is nothing to ask. Go and talk.'
+        : 'Enough times that it is not chance. Here they are, properly.';
+
+      const card = createElement('article', { className: 'reveal reveal--blue unlocked' });
+      card.append(...profileBody(subject));
+
+      const actions = createElement('div', { className: 'unlocked__actions' });
+      const write = createElement(
+        'button',
+        { className: 'btn btn--full', type: 'button' },
+        connectionId ? 'Open the conversation' : 'Say something'
+      );
+      write.addEventListener('click', () => router.go('/inbox'));
+
+      const later = createElement('button', { className: 'btn btn--ghost btn--full', type: 'button' }, 'Later');
+      later.addEventListener('click', () => {
+        sub.textContent = 'They are waiting in Your people, whenever you want.';
+        load();
+      });
+
+      actions.append(write, later);
+      card.append(actions);
+      setStage(card);
+      window.scrollTo({ top: 0 });
+    }
+
     async function choose(pairing, subjectId) {
       if (busy) return;
       busy = true;
 
       try {
         const result = await api.decidePair(pairing.id, subjectId);
+
+        if (result.unlocked) {
+          busy = false;
+          renderUnlock(result.unlocked, result.connection_id);
+          return;
+        }
+
         if (result.round_two_scheduled) {
           // Said once, quietly — the delay is the point, and a viewer who
           // knows a second look is coming treats the first one differently.
@@ -141,54 +155,7 @@ export default {
       const card = createElement('article', {
         className: `reveal ${index === 0 ? 'reveal--red' : 'reveal--blue'}`,
       });
-
-      const gallery = createElement('div', { className: 'reveal__gallery' });
-      for (const url of subject.photos || []) {
-        gallery.append(createElement('img', { src: url, alt: '', loading: 'lazy' }));
-      }
-      if (!(subject.photos || []).length) {
-        gallery.append(createElement('div', { className: 'choice__missing' }, 'No photo'));
-      }
-
-      const name = createElement('h2', { className: 'reveal__name' });
-      name.append(subject.display_name || 'Unnamed');
-      if (subject.age) name.append(createElement('span', { className: 'reveal__age' }, `${subject.age}`));
-
-      const facts = createElement('dl', { className: 'reveal__facts' });
-      for (const [key, label, format] of VITALS) {
-        const value = subject[key];
-        if (value === null || value === undefined || value === '') continue;
-        facts.append(
-          createElement('dt', {}, label),
-          createElement('dd', {}, format(value))
-        );
-      }
-      if (subject.gender_identity) {
-        facts.append(createElement('dt', {}, 'Identifies as'), createElement('dd', {}, subject.gender_identity));
-      }
-      if (Array.isArray(subject.languages) && subject.languages.length) {
-        facts.append(
-          createElement('dt', {}, 'Speaks'),
-          createElement('dd', {}, subject.languages.map(pretty).join(', '))
-        );
-      }
-
-      const prompts = createElement('div', { className: 'reveal__prompts' });
-      for (const prompt of subject.prompts || []) {
-        const block = createElement('div', { className: 'prompt-card' });
-        block.append(createElement('p', { className: 'prompt-card__q' }, prompt.text));
-
-        if (prompt.kind === 'voice') {
-          if (prompt.audio_url) {
-            block.append(createElement('audio', { controls: 'true', src: prompt.audio_url }));
-          } else {
-            block.append(createElement('p', { className: 'prompt-card__pending' }, 'Recording still processing'));
-          }
-        } else {
-          block.append(createElement('p', { className: 'prompt-card__a' }, prompt.body || ''));
-        }
-        prompts.append(block);
-      }
+      card.append(...profileBody(subject));
 
       const pick = createElement(
         'button',
@@ -197,7 +164,7 @@ export default {
       );
       pick.addEventListener('click', () => choose(pairing, subject.id));
 
-      card.append(gallery, name, facts, prompts, pick);
+      card.append(pick);
       return card;
     }
 

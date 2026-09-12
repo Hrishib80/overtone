@@ -107,6 +107,31 @@ class Api {
   decidePair(pairingId, chosenId) {
     return this.request('POST', `/api/pairs/${pairingId}/decide`, { chosen_id: chosenId });
   }
+
+  // ---- connections ----
+  getInbox() {
+    return this.request('GET', '/api/connections');
+  }
+
+  sendRequest(subjectId, text) {
+    return this.request('POST', '/api/connections/requests', { subject_id: subjectId, text });
+  }
+
+  getThread(connectionId) {
+    return this.request('GET', `/api/connections/${connectionId}/messages`);
+  }
+
+  sendMessage(connectionId, text) {
+    return this.request('POST', `/api/connections/${connectionId}/messages`, { text });
+  }
+
+  declineRequest(connectionId) {
+    return this.request('POST', `/api/connections/${connectionId}/decline`);
+  }
+
+  markRead(connectionId) {
+    return this.request('POST', `/api/connections/${connectionId}/read`);
+  }
 }
 
 export default new Api();
