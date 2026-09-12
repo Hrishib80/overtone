@@ -494,9 +494,13 @@ Still open:
 - Redis for chat fanout and presence. The chat socket exists
   (`backend/signaling.py`) but is per-process and the frontend does not use it
   yet — the thread view polls on open instead.
-- **No block/report UI.** The endpoints exist and are tested; nothing on any
-  screen calls them yet, which means the safety features are currently
-  unreachable by an actual user.
+- **No block list UI.** Blocking and reporting are reachable from a
+  conversation and from a revealed profile, but there is no screen that lists
+  who you have blocked or lets you undo it — `GET/DELETE /api/safety/blocks`
+  exist and are unused.
+- **Nothing reports a photo or a prompt specifically.** The report is about a
+  person; `context` carries a connection id when there is one, so a reviewer
+  can see the conversation but not "this image".
 
 ### Phase 06 — Design system
 - Art-directed landing page. Everything else now shares the sky and the motion

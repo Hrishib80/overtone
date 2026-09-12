@@ -132,6 +132,33 @@ class Api {
   markRead(connectionId) {
     return this.request('POST', `/api/connections/${connectionId}/read`);
   }
+
+  // ---- safety ----
+  getReportReasons() {
+    return this.request('GET', '/api/safety/reasons');
+  }
+
+  blockUser(userId) {
+    return this.request('POST', '/api/safety/blocks', { user_id: userId });
+  }
+
+  unblockUser(userId) {
+    return this.request('DELETE', `/api/safety/blocks/${userId}`);
+  }
+
+  getBlocks() {
+    return this.request('GET', '/api/safety/blocks');
+  }
+
+  reportUser(userId, { reason, note, context, block = true }) {
+    return this.request('POST', '/api/safety/reports', {
+      user_id: userId,
+      reason,
+      note: note || null,
+      context: context || null,
+      block,
+    });
+  }
 }
 
 export default new Api();

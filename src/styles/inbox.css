@@ -751,3 +751,126 @@
   font-style: italic;
   text-align: center;
 }
+
+/* ---- block and report ---------------------------------------------------- */
+
+/* Present, never prominent. Somebody looking for it finds it immediately;
+   nobody else is reminded on every screen that this is a place where people
+   need protecting from each other. */
+.safety-open {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.safety-open:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.revealed__bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: calc(var(--s-3) * -1);
+}
+
+.safety {
+  display: grid;
+  gap: var(--s-6);
+}
+
+.safety__title {
+  font-size: var(--t-1);
+  font-weight: 700;
+  margin-bottom: var(--s-2);
+}
+
+.safety__note {
+  color: var(--muted);
+  font-size: var(--t--1);
+  margin-bottom: var(--s-4);
+  max-width: 46ch;
+}
+
+/* Blocking is the one that needs no reason, so it is the one that gets the
+   red. Reporting asks for more and sits under it. */
+.safety__block .btn {
+  background: var(--red);
+}
+
+.safety__block .btn:hover:not(:disabled) {
+  background: var(--red-strong);
+}
+
+.safety__report {
+  display: grid;
+  gap: var(--s-3);
+  padding-top: var(--s-5);
+  border-top: 1px solid var(--rule);
+}
+
+.safety__reasons {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.safety__reason,
+.safety__check {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: var(--tap);
+  padding: 0 var(--s-3);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.safety__reason:hover,
+.safety__check:hover {
+  background: var(--surface-2);
+}
+
+.safety__reason input,
+.safety__check input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--blue);
+}
+
+.safety__text {
+  width: 100%;
+  padding: var(--s-3);
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+}
+
+.safety__text:focus {
+  outline: none;
+  border-color: var(--blue);
+  background: var(--surface);
+}
+
+.safety__send {
+  background: var(--blue);
+}
+
+.safety__send:hover:not(:disabled) {
+  background: var(--blue-strong);
+}

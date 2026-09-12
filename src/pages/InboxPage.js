@@ -1,6 +1,7 @@
 import { createElement, formatTime } from '../utils/dom.js';
 import { profileBody } from '../components/profile.js';
 import { openSheet } from '../components/sheet.js';
+import { safetyButton } from '../components/safety.js';
 import api from '../services/api.js';
 import router from '../services/router.js';
 import { toast } from '../utils/toast.js';
@@ -107,13 +108,21 @@ export default {
 
       openSheet({
         label: `Conversation with ${thread.peer.display_name || 'someone'}`,
-        build: () => {
+        build: ({ close }) => {
           const wrap = createElement('div', { className: 'thread' });
 
           const bar = createElement('header', { className: 'thread__bar' });
           bar.append(
             avatar(thread.peer, { size: 'avatar--sm' }),
-            createElement('h2', { className: 'thread__name' }, thread.peer.display_name || '')
+            createElement('h2', { className: 'thread__name' }, thread.peer.display_name || ''),
+            safetyButton({
+              subject: thread.peer,
+              context: entry.id,
+              onDone: () => {
+                close();
+                refresh();
+              },
+            })
           );
 
           const log = createElement('div', { className: 'thread__log' });
@@ -209,7 +218,17 @@ export default {
         label: subject.display_name || 'Profile',
         build: ({ close }) => {
           const wrap = createElement('div', { className: 'revealed' });
-          wrap.append(...profileBody(subject));
+          const heading = createElement('div', { className: 'revealed__bar' });
+          heading.append(
+            safetyButton({
+              subject,
+              onDone: () => {
+                close();
+                refresh();
+              },
+            })
+          );
+          wrap.append(heading, ...profileBody(subject));
 
           const form = createElement('form', { className: 'compose' });
           const input = createElement('textarea', {
