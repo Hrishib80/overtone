@@ -548,3 +548,11 @@ an action or introduces content; nothing here loops or decorates.
   clock. That is what lets the arithmetic be tested precisely and the wiring be
   tested separately.
 - Never commit `.env` or `*.db`. Both are gitignored; verify staging anyway.
+- **Stage explicit paths, not `git add -A`.** It swept a favicon and its
+  `<link>` line into an unrelated commit twice in one session. `git status`
+  before staging is the habit; naming the files is the fix.
+- **Re-exported `src/styles/overtone_favcon.png`? Run
+  `python scripts/make_icons.py`.** The 1024px master is the source; `public/`
+  holds the derived sizes a browser asks for, and they are committed rather
+  than built so a deploy never needs Pillow. They silently go stale otherwise —
+  it happened twice.
