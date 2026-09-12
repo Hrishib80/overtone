@@ -23,6 +23,7 @@ from backend.logging_config import configure_logging, get_logger, request_id_var
 from backend.media import router as media_router
 from backend.pairs import router as pairs_router
 from backend.profile import router as profile_router
+from backend.safety import router as safety_router
 from backend.signaling import router as signaling_router
 
 configure_logging(level=settings.log_level, json_output=settings.emit_json_logs)
@@ -122,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(media_router)
     app.include_router(pairs_router)
     app.include_router(inbox_router)
+    app.include_router(safety_router)
     app.include_router(signaling_router)
 
     @app.get("/api/health", include_in_schema=False)

@@ -1,8 +1,8 @@
-"""phase 04: unlock, connections and preference
+"""phase 05: blocks and reports
 
-Revision ID: 295e19137aff
+Revision ID: b18d43d7c777
 Revises: 
-Create Date: 2026-09-12 18:39:27.551177
+Create Date: 2026-09-12 23:24:46.940723
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 import pgvector.sqlalchemy
 
 # revision identifiers, used by Alembic.
-revision: str = '295e19137aff'
+revision: str = 'b18d43d7c777'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -153,6 +153,20 @@ def upgrade() -> None:
     with op.batch_alter_table('affinities', schema=None) as batch_op:
         batch_op.create_index('ix_affinities_subject', ['subject_id'], unique=False)
         batch_op.create_index('ix_affinities_viewer_state', ['viewer_id', 'state'], unique=False)
+
+    op.create_table('blocks',
+    sa.Column('id', sa.String(), nullable=False),
+    sa.Column('blocker_id', sa.String(), nullable=False),
+    sa.Column('blocked_id', sa.String(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['blocked_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['blocker_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('blocker_id', 'blocked_id', name='uq_block_pair')
+    )
+    with op.batch_alter_table('blocks', schema=None) as batch_op:
+        batch_op.create_index('ix_blocks_blocked', ['blocked_id'], unique=False)
+        batch_op.create_index('ix_blocks_blocker', ['blocker_id'], unique=False)
 
     op.create_table('connections',
     sa.Column('id', sa.String(), nullable=False),
@@ -312,6 +326,25 @@ def upgrade() -> None:
     with op.batch_alter_table('ratings', schema=None) as batch_op:
         batch_op.create_index('ix_ratings_subject', ['subject_id'], unique=False)
 
+    op.create_table('reports',
+    sa.Column('id', sa.String(), nullable=False),
+    sa.Column('reporter_id', sa.String(), nullable=True),
+    sa.Column('subject_id', sa.String(), nullable=False),
+    sa.Column('reason', sa.String(), nullable=False),
+    sa.Column('note', sa.Text(), nullable=True),
+    sa.Column('context', sa.String(), nullable=True),
+    sa.Column('status', sa.String(), nullable=False),
+    sa.Column('reviewed_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('reviewer_note', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['reporter_id'], ['users.id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['subject_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    with op.batch_alter_table('reports', schema=None) as batch_op:
+        batch_op.create_index('ix_reports_queue', ['status', 'created_at'], unique=False)
+        batch_op.create_index('ix_reports_subject', ['subject_id'], unique=False)
+
     op.create_table('user_interested_in',
     sa.Column('user_id', sa.String(), nullable=False),
     sa.Column('segment', sa.String(), nullable=False),
@@ -402,6 +435,11 @@ def downgrade() -> None:
     op.drop_table('viewer_preferences')
     op.drop_table('user_visible_as')
     op.drop_table('user_interested_in')
+    with op.batch_alter_table('reports', schema=None) as batch_op:
+        batch_op.drop_index('ix_reports_subject')
+        batch_op.drop_index('ix_reports_queue')
+
+    op.drop_table('reports')
     with op.batch_alter_table('ratings', schema=None) as batch_op:
         batch_op.drop_index('ix_ratings_subject')
 
@@ -433,6 +471,11 @@ def downgrade() -> None:
         batch_op.drop_index('ix_connections_user_a')
 
     op.drop_table('connections')
+    with op.batch_alter_table('blocks', schema=None) as batch_op:
+        batch_op.drop_index('ix_blocks_blocker')
+        batch_op.drop_index('ix_blocks_blocked')
+
+    op.drop_table('blocks')
     with op.batch_alter_table('affinities', schema=None) as batch_op:
         batch_op.drop_index('ix_affinities_viewer_state')
         batch_op.drop_index('ix_affinities_subject')

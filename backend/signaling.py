@@ -22,6 +22,7 @@ from backend.auth import verify_ws_token
 from backend.config import settings
 from backend.database import AsyncSessionLocal, ChatMessage, Connection, ConnectionStatus
 from backend.logging_config import get_logger
+from backend.safety import is_blocked
 
 log = get_logger(__name__)
 router = APIRouter()
@@ -72,13 +73,23 @@ async def _is_participant(connection_id: str, user_id: str) -> bool:
     if AsyncSessionLocal is None:
         return False
     async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(Connection.id)
-            .where(Connection.id == connection_id)
-            .where(Connection.status == ConnectionStatus.open)
-            .where(or_(Connection.user_a_id == user_id, Connection.user_b_id == user_id))
-        )
-        return result.scalar_one_or_none() is not None
+        connection = (
+            await db.execute(
+                select(Connection)
+                .where(Connection.id == connection_id)
+                .where(Connection.status == ConnectionStatus.open)
+                .where(or_(Connection.user_a_id == user_id, Connection.user_b_id == user_id))
+            )
+        ).scalar_one_or_none()
+        if connection is None:
+            return False
+
+        # Blocking closes the conversation, so an open one should never be
+        # between blocked people — but a socket outlives the HTTP request that
+        # would have noticed, and this is the check that holds while one is
+        # already connected.
+        other = connection.user_b_id if connection.user_a_id == user_id else connection.user_a_id
+        return not await is_blocked(db, user_id, other)
 
 
 @router.websocket("/ws/signal/{room_id}")

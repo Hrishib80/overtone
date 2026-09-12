@@ -737,3 +737,80 @@ class Affinity(Base):
     unlocked_at = Column(UTCDateTime(), nullable=True)
     last_decided_at = Column(UTCDateTime(), nullable=True)
     created_at = Column(UTCDateTime(), nullable=False, default=utcnow)
+
+
+# --------------------------------------------------------------------------
+# Safety
+# --------------------------------------------------------------------------
+
+
+class Block(Base):
+    """One person's decision not to encounter another.
+
+    Stored one-directionally — who blocked whom is a fact worth keeping — but
+    read symmetrically everywhere. If either side has blocked, neither is shown
+    to the other, neither can write, and any conversation between them closes.
+    A block that only worked one way would let the blocked person keep seeing
+    someone who has removed themselves, which is the case it exists for.
+    """
+
+    __tablename__ = "blocks"
+    __table_args__ = (
+        UniqueConstraint("blocker_id", "blocked_id", name="uq_block_pair"),
+        Index("ix_blocks_blocker", "blocker_id"),
+        Index("ix_blocks_blocked", "blocked_id"),
+    )
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    blocker_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    blocked_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(UTCDateTime(), nullable=False, default=utcnow)
+
+
+class ReportReason(enum.StrEnum):
+    fake = "fake"  # not who they say they are
+    harassment = "harassment"
+    sexual = "sexual"  # unsolicited sexual content
+    underage = "underage"
+    hate = "hate"
+    other = "other"
+
+
+class ReportStatus(enum.StrEnum):
+    open = "open"
+    actioned = "actioned"
+    dismissed = "dismissed"
+
+
+class Report(Base):
+    """A report, and what a human decided about it.
+
+    Kept after review rather than deleted: a single dismissed report means
+    little, and four dismissed reports about the same person from four
+    unrelated people is the pattern that matters. `reporter_id` survives the
+    reporter's own deletion as NULL so the count stays honest.
+    """
+
+    __tablename__ = "reports"
+    __table_args__ = (
+        Index("ix_reports_queue", "status", "created_at"),
+        Index("ix_reports_subject", "subject_id"),
+    )
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    reporter_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Indexed by ix_reports_subject in __table_args__; `index=True` here as
+    # well would create a second, identical index.
+    subject_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    reason = Column(String, nullable=False)
+    note = Column(Text, nullable=True)
+    # Where it happened — a connection id or a pairing id — so a reviewer can
+    # see the message that prompted it rather than guessing.
+    context = Column(String, nullable=True)
+
+    status = Column(String, nullable=False, default=ReportStatus.open)
+    reviewed_at = Column(UTCDateTime(), nullable=True)
+    reviewer_note = Column(Text, nullable=True)
+
+    created_at = Column(UTCDateTime(), nullable=False, default=utcnow)

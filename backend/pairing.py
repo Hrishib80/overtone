@@ -18,7 +18,7 @@ import random
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.affinity import apply_decision as apply_affinity
@@ -49,6 +49,7 @@ from backend.preference import observe as observe_preference
 from backend.preference import tilt as preference_tilt
 from backend.rating import Rating as RatingValue
 from backend.rating_service import apply_comparison
+from backend.safety import blocked_ids
 
 log = get_logger(__name__)
 
@@ -170,8 +171,9 @@ async def _eligible_candidates(
     db: AsyncSession, viewer: User, segment: str, viewer_visible_as: list[str]
 ) -> list[Candidate]:
     """Everyone this viewer could be shown under `segment`: same campus,
-    active, visible_as this segment, mutually interested in the viewer, and
-    with a face embedding to actually compare."""
+    active, visible_as this segment, mutually interested in the viewer, not
+    blocked in either direction, and with a face embedding to compare."""
+    excluded = await blocked_ids(db, viewer.id)
     rows = (
         await db.execute(
             select(User, ProfileEmbedding)
@@ -181,6 +183,7 @@ async def _eligible_candidates(
             .where(User.status == UserStatus.active)
             .where(User.deleted_at.is_(None))
             .where(User.id != viewer.id)
+            .where(User.id.not_in(excluded) if excluded else true())
             .where(UserVisibleAs.segment == segment)
             .where(ProfileEmbedding.face_vector.is_not(None))
             .where(

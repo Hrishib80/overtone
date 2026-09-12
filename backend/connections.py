@@ -35,6 +35,7 @@ from backend.database import (
 from backend.errors import AppError, Conflict, NotAuthorized, NotFound
 from backend.logging_config import get_logger
 from backend.profile_view import full_profile_view, primary_photo_url
+from backend.safety import blocked_ids, is_blocked
 
 log = get_logger(__name__)
 
@@ -128,6 +129,11 @@ async def send_request(
     """Spend the one opening message an unlock buys."""
     if recipient_id == sender.id:
         raise AppError("You can't reach out to yourself.")
+    # Deliberately the same message a stranger gets. Confirming that a
+    # specific person blocked you is information the blocker did not agree to
+    # share, and it is the thing that turns a block into a provocation.
+    if await is_blocked(db, sender.id, recipient_id):
+        raise NotAuthorized("You can't reach that person.")
     if not await is_unlocked(db, sender.id, recipient_id):
         raise NotAuthorized("You haven't unlocked that person yet.")
 
@@ -177,6 +183,8 @@ async def post_message(db: AsyncSession, *, sender: User, connection_id: str, te
     connection = await _load_for(db, connection_id, sender.id)
     body = _clean(text)
 
+    if await is_blocked(db, sender.id, peer_id(connection, sender.id)):
+        raise Conflict("That conversation is closed.")
     if connection.status == ConnectionStatus.declined:
         raise Conflict("That conversation is closed.")
 
@@ -341,10 +349,14 @@ async def inbox(db: AsyncSession, user: User) -> dict[str, Any]:
         else:
             incoming.append(entry)
 
+    # Blocking clears the affinity, so this is belt and braces — but the
+    # inbox is the one place a blocked person reappearing would be most
+    # visible, and the query costs nothing.
+    separated = await blocked_ids(db, user.id)
     unlocked = [
         await full_profile_view(db, subject_id)
         for subject_id in await unlocked_subject_ids(db, user.id)
-        if subject_id not in connected_peers
+        if subject_id not in connected_peers and subject_id not in separated
     ]
 
     return {
