@@ -108,7 +108,7 @@ export default {
     const headInner = createElement('div', { className: 'ob__head-inner' });
     const stepLabel = createElement('span', { className: 'ob__step' }, 'Step 1 of 4');
     const progress = createElement('div', { className: 'progress' });
-    const bar = createElement('div', { className: 'progress__bar', style: 'width:33%' });
+    const bar = createElement('div', { className: 'progress__bar' });
     progress.append(bar);
     headInner.append(stepLabel, progress);
     head.append(headInner);
@@ -406,10 +406,21 @@ export default {
     let index = 0;
 
     function show(next) {
+      // Which way the funnel is moving, so the incoming step enters from the
+      // side it came from. A step that always slides the same way makes Back
+      // feel like another Continue.
+      const backwards = next < index;
       index = next;
+
       steps.forEach((el, i) => {
         el.hidden = i !== index;
       });
+
+      const current = steps[index];
+      current.classList.remove('step-in', 'step-in--back');
+      void current.offsetWidth; // restart rather than skip
+      current.classList.add(backwards ? 'step-in--back' : 'step-in');
+
       stepLabel.textContent = `Step ${index + 1} of ${steps.length}`;
       bar.style.width = `${((index + 1) / steps.length) * 100}%`;
       backBtn.hidden = index === 0;
@@ -417,6 +428,8 @@ export default {
       body.scrollTo?.({ top: 0 });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+
+    show(0);
 
     backBtn.addEventListener('click', () => show(index - 1));
 

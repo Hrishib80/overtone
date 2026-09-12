@@ -1,18 +1,26 @@
-/* Onboarding and status screens. */
+/* Onboarding and status screens.
+
+   Same sky as everywhere else, but the form itself stays on white. A long
+   form is a work surface — people are typing into it for several minutes —
+   and a saturated ground behind input fields is tiring in a way a comparison
+   screen never is. So: sky chrome, white card. */
 
 .ob {
   min-height: 100dvh;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  background: var(--ground);
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--sky);
+  color: var(--on-sky);
 }
 
 .ob__head {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--surface);
-  border-bottom: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--sky) 82%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.34);
   padding: var(--s-4);
 }
 
@@ -29,36 +37,80 @@
   font-size: var(--t--1);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--on-sky-soft);
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .progress {
   flex: 1;
   height: 4px;
-  background: var(--rule);
+  background: rgba(255, 255, 255, 0.4);
   border-radius: 999px;
   overflow: hidden;
 }
 
 .progress__bar {
   height: 100%;
-  background: var(--red);
-  transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  background: var(--on-sky);
+  border-radius: 999px;
+  transition: width 0.42s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .ob__body {
   width: 100%;
   max-width: 640px;
+  margin-block: var(--s-5) var(--s-7);
   margin-inline: auto;
-  padding: var(--s-6) var(--s-4) var(--s-8);
+  padding: var(--s-6) var(--s-5);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lift);
+  color: var(--ink);
+  align-self: start;
+}
+
+@media (max-width: 560px) {
+  .ob__body {
+    /* Edge to edge on a phone: a 16px gutter of blue either side of a form
+       is not worth the width it costs the fields. */
+    margin-block: 0;
+    border-inline: 0;
+    border-radius: 0;
+    min-height: 100%;
+  }
+}
+
+/* The funnel moving, in the direction it is actually moving. */
+.step-in {
+  animation: step-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.step-in--back {
+  animation: step-in-back 0.32s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@keyframes step-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
 }
 
 .ob__foot {
   position: sticky;
   bottom: 0;
-  background: var(--surface);
-  border-top: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--sky) 82%, transparent);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(255, 255, 255, 0.34);
   padding: var(--s-4);
   /* Clears the iOS home indicator */
   padding-bottom: max(var(--s-4), env(safe-area-inset-bottom));
@@ -193,7 +245,8 @@
   display: grid;
   place-items: center;
   padding: var(--s-5);
-  background: var(--ground);
+  background: var(--sky);
+  color: var(--on-sky);
 }
 
 .status__card {

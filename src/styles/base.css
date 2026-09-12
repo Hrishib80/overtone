@@ -330,6 +330,30 @@ a {
   box-shadow: var(--shadow);
 }
 
+/* ---- Shared motion ------------------------------------------------------ */
+
+/* Used by the pair view, the inbox and the auth panel. It lived in two
+   stylesheets with different durations for a while, which meant whichever
+   loaded last silently won — one definition, here, is the fix. Callers set
+   `--rise-delay` to stagger a group. */
+.rise {
+  animation: rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: var(--rise-delay, 0ms);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -220% 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

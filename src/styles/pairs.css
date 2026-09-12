@@ -90,18 +90,6 @@
   }
 }
 
-.rise {
-  animation: rise 0.44s cubic-bezier(0.22, 1, 0.36, 1) backwards;
-  animation-delay: var(--rise-delay, 0ms);
-}
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-}
-
 .pairs__stage {
   display: grid;
   align-content: center;
@@ -303,12 +291,6 @@
   background: linear-gradient(100deg, var(--surface-2) 30%, var(--surface) 50%, var(--surface-2) 70%);
   background-size: 220% 100%;
   animation: shimmer 1.3s linear infinite;
-}
-
-@keyframes shimmer {
-  to {
-    background-position: -220% 0;
-  }
 }
 
 .choice__missing {

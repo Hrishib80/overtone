@@ -210,6 +210,33 @@ touches who wins a comparison, and **`TILT = 0` removes it outright** — which
 has its own test, so the escape hatch is real. What the value should be is a
 phase 07 question.
 
+### The surface
+
+**One ground for the whole app: `--sky`.** The palette was measured off Study
+of Us at the start, and then the sky was used on the landing page only —
+everything after sign-in dropped onto a pale neutral, so signing in looked
+like arriving at a different product. Landing, auth, onboarding, the pair view
+and the inbox now all sit on it.
+
+What changes between them is *what sits on the sky*, not the colour:
+
+| Screen | On the ground |
+|---|---|
+| Pair view | the two photographs, and nothing else |
+| Inbox | white cards |
+| Auth / onboarding | one white card, because people type into it |
+
+**White is the display voice only.** White on the sky is **2.1:1** and fails
+every contrast threshold, so it is used for the heading and its single
+supporting line, where size and weight carry it. Anything small enough that it
+has to be read takes `--on-sky-soft` — the deep pole, **5.5:1**. Both, plus a
+deep-navy `--sky`, are redefined for dark mode.
+
+**The heading names what it is showing** — "Which woman?", "Which man?",
+"Which person?" — from `segment` on the pair response. That is the viewer's
+own `interested_in` choice reflected back; it says nothing about either
+subject, so round 1's photo-only rule is untouched.
+
 ### Identity model
 
 Three separate fields, and the separation is load-bearing:
@@ -362,6 +389,13 @@ Each of these cost real debugging time. Do not reintroduce them.
   `wait_for_selector('.choice')` returns on the placeholder and the click
   lands on a `div` with no handler, which looks exactly like a broken feature.
   Target `button.choice`.
+- **A keyframe defined in two stylesheets is decided by load order.** `.rise`
+  existed in both `pairs.css` and `inbox.css` with different durations, so
+  whichever `index.html` loaded last silently won for both. Shared motion now
+  lives once, in `base.css`.
+- **Demo accounts wear out.** A viewer sees each pair once, so repeated
+  Playwright runs exhaust a pool and the next run looks like a broken app.
+  Reseed before trusting a failure.
 
 ---
 
@@ -407,10 +441,9 @@ Each of these cost real debugging time. Do not reintroduce them.
   viewer opens at once.
 
 ### Phase 06 — Design system
-- Carry the two-pole palette through remaining surfaces.
-- Art-directed landing page.
-- The onboarding flow has had none of the motion or spacing work the pair view
-  and inbox got; it is the last screen still on the phase-01 treatment.
+- Art-directed landing page. Everything else now shares the sky and the motion
+  conventions below; the landing page is the one surface that could still be
+  more than tidy.
 
 **Motion conventions, now that there are some.** Entrances are 260–440ms on
 `cubic-bezier(0.22, 1, 0.36, 1)`, staggered 40–70ms per item via a `.rise`

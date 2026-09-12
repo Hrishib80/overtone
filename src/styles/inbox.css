@@ -123,18 +123,6 @@
   max-width: 48ch;
 }
 
-.rise {
-  animation: rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
-  animation-delay: var(--rise-delay, 0ms);
-}
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-}
-
 /* ---- a request ----------------------------------------------------------- */
 
 .request {
