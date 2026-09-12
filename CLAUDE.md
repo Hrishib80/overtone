@@ -224,7 +224,14 @@ What changes between them is *what sits on the sky*, not the colour:
 |---|---|
 | Pair view | the two photographs, and nothing else |
 | Inbox | white cards |
-| Auth / onboarding | one white card, because people type into it |
+| Onboarding | one white card, because people type into it |
+
+**Join and sign in are the deliberate exception** — they stay on the pale
+neutral. It is the one place someone is deciding whether to be on a dating app
+at all, and a quiet form asks less of them than a branded one. The sky is one
+click away on either side, so it reads as a pause in the middle of the brand
+rather than a gap in it. Do not "fix" this for consistency; it was tried on the
+sky and taken back off.
 
 **White is the display voice only.** White on the sky is **2.1:1** and fails
 every contrast threshold, so it is used for the heading and its single

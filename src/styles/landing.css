@@ -139,16 +139,22 @@
 
 /* ---- Auth panel --------------------------------------------------------- */
 
-/* Straight off the landing page, so signing in is the same room with the
-   lights on rather than a different building. The form keeps its own white
-   surface for the same reason onboarding does: people type into it. */
+/* Deliberately NOT on the sky, unlike every other screen.
+
+   This is the one place someone is deciding whether to exist on a dating app
+   at all, and a quiet, ordinary form asks less of them than a branded one.
+   The sky is two clicks away on either side — the landing page they came from
+   and the onboarding they are going to — so this reads as a pause in the
+   middle of the brand rather than an absence of it. Reverted here on purpose
+   after the sky pass; it is a call about tone, not an oversight. */
+
 .auth {
   min-height: 100dvh;
   display: grid;
   grid-template-rows: auto 1fr;
   grid-template-columns: minmax(0, 1fr);
-  background: var(--sky);
-  color: var(--on-sky);
+  background: var(--ground);
+  color: var(--ink);
 }
 
 .auth__bar {
@@ -156,9 +162,8 @@
   align-items: center;
   gap: var(--s-3);
   padding: var(--s-4);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.34);
-  background: color-mix(in srgb, var(--sky) 82%, transparent);
-  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface);
 }
 
 .auth__back {
@@ -167,54 +172,38 @@
   justify-content: center;
   width: 40px;
   height: 40px;
-  border: 1px solid rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--surface);
   cursor: pointer;
-  color: var(--on-sky);
+  color: var(--ink);
   transition:
     background 0.15s ease,
     border-color 0.15s ease;
 }
 
 .auth__back:hover {
-  background: rgba(255, 255, 255, 0.32);
-  border-color: rgba(255, 255, 255, 0.8);
+  background: var(--surface-2);
+  border-color: var(--ink-2);
 }
 
 .auth__title {
   font-size: var(--t-1);
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--on-sky);
+  color: var(--ink);
 }
 
 .auth__body {
   width: 100%;
   max-width: 440px;
-  margin-block: var(--s-6);
   margin-inline: auto;
-  padding: var(--s-6) var(--s-5);
-  background: var(--surface);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lift);
-  color: var(--ink);
-  align-self: start;
+  padding: var(--s-6) var(--s-4) var(--s-8);
   animation: rise 0.44s cubic-bezier(0.22, 1, 0.36, 1) backwards;
-}
-
-@media (max-width: 560px) {
-  .auth__body {
-    margin-block: 0;
-    border-inline: 0;
-    border-radius: 0;
-    min-height: 100%;
-  }
 }
 
 @media (min-width: 640px) {
   .auth__body {
-    padding-block: var(--s-7);
+    padding-block: var(--s-8);
   }
 }
