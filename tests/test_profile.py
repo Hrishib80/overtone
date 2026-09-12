@@ -6,7 +6,7 @@ from tests.conftest import CAMPUS_DOMAIN, complete_profile, register_and_verify
 
 
 @pytest.mark.asyncio
-async def test_options_returns_everything_onboarding_needs(client):
+async def test_options_returns_everything_onboarding_needs(client, fake_storage):
     body = (await client.get("/api/profile/options")).json()
 
     assert len(body["gender_identities"]) >= 30
@@ -17,7 +17,7 @@ async def test_options_returns_everything_onboarding_needs(client):
 
 
 @pytest.mark.asyncio
-async def test_gender_list_is_open_and_not_binary(client):
+async def test_gender_list_is_open_and_not_binary(client, fake_storage):
     labels = {g["id"] for g in (await client.get("/api/profile/options")).json()["gender_identities"]}
 
     assert {"man", "woman", "nonbinary"} <= labels
@@ -27,7 +27,7 @@ async def test_gender_list_is_open_and_not_binary(client):
 
 
 @pytest.mark.asyncio
-async def test_identity_is_separate_from_matching_fields(client, verified):
+async def test_identity_is_separate_from_matching_fields(client, verified, fake_storage):
     """A non-binary identity can still choose to appear in men's and women's searches."""
     response = await client.patch(
         "/api/profile",
@@ -49,7 +49,7 @@ async def test_identity_is_separate_from_matching_fields(client, verified):
 
 
 @pytest.mark.asyncio
-async def test_custom_gender_text_is_kept_alongside_the_structured_value(client, verified):
+async def test_custom_gender_text_is_kept_alongside_the_structured_value(client, verified, fake_storage):
     response = await client.patch(
         "/api/profile",
         headers=verified["headers"],
@@ -60,7 +60,7 @@ async def test_custom_gender_text_is_kept_alongside_the_structured_value(client,
 
 
 @pytest.mark.asyncio
-async def test_unknown_option_values_are_rejected(client, verified):
+async def test_unknown_option_values_are_rejected(client, verified, fake_storage):
     response = await client.patch(
         "/api/profile", headers=verified["headers"], json={"dating_intentions": "situationship"}
     )
@@ -68,7 +68,7 @@ async def test_unknown_option_values_are_rejected(client, verified):
 
 
 @pytest.mark.asyncio
-async def test_unknown_segment_is_rejected(client, verified):
+async def test_unknown_segment_is_rejected(client, verified, fake_storage):
     response = await client.patch(
         "/api/profile", headers=verified["headers"], json={"interested_in": ["everyone"]}
     )
@@ -76,13 +76,13 @@ async def test_unknown_segment_is_rejected(client, verified):
 
 
 @pytest.mark.asyncio
-async def test_empty_selection_is_rejected(client, verified):
+async def test_empty_selection_is_rejected(client, verified, fake_storage):
     response = await client.patch("/api/profile", headers=verified["headers"], json={"visible_as": []})
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_unknown_field_is_rejected(client, verified):
+async def test_unknown_field_is_rejected(client, verified, fake_storage):
     response = await client.patch(
         "/api/profile", headers=verified["headers"], json={"favourite_colour": "red"}
     )
@@ -90,13 +90,13 @@ async def test_unknown_field_is_rejected(client, verified):
 
 
 @pytest.mark.asyncio
-async def test_implausible_height_is_rejected(client, verified):
+async def test_implausible_height_is_rejected(client, verified, fake_storage):
     response = await client.patch("/api/profile", headers=verified["headers"], json={"height_cm": 400})
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_patch_is_partial(client, verified):
+async def test_patch_is_partial(client, verified, fake_storage):
     await client.patch("/api/profile", headers=verified["headers"], json={"height_cm": 170})
     await client.patch("/api/profile", headers=verified["headers"], json={"religion": "hindu"})
 
@@ -106,8 +106,10 @@ async def test_patch_is_partial(client, verified):
 
 
 @pytest.mark.asyncio
-async def test_prompt_answers_are_stored(client, verified):
-    await complete_profile(client, verified["headers"], visible_as=["woman"], interested_in=["man"])
+async def test_prompt_answers_are_stored(client, verified, fake_storage):
+    await complete_profile(
+        client, verified["headers"], visible_as=["woman"], interested_in=["man"], store=fake_storage
+    )
     body = (await client.get("/api/profile", headers=verified["headers"])).json()
 
     assert len(body["prompts"]) == 4
@@ -116,7 +118,7 @@ async def test_prompt_answers_are_stored(client, verified):
 
 
 @pytest.mark.asyncio
-async def test_written_prompt_needs_a_body(client, verified):
+async def test_written_prompt_needs_a_body(client, verified, fake_storage):
     response = await client.put(
         "/api/profile/prompts",
         headers=verified["headers"],
@@ -126,7 +128,7 @@ async def test_written_prompt_needs_a_body(client, verified):
 
 
 @pytest.mark.asyncio
-async def test_voice_prompt_needs_a_recording(client, verified):
+async def test_voice_prompt_needs_a_recording(client, verified, fake_storage):
     response = await client.put(
         "/api/profile/prompts",
         headers=verified["headers"],
@@ -136,7 +138,7 @@ async def test_voice_prompt_needs_a_recording(client, verified):
 
 
 @pytest.mark.asyncio
-async def test_voice_prompt_over_fifteen_seconds_is_rejected(client, verified):
+async def test_voice_prompt_over_fifteen_seconds_is_rejected(client, verified, fake_storage):
     response = await client.put(
         "/api/profile/prompts",
         headers=verified["headers"],
@@ -156,7 +158,7 @@ async def test_voice_prompt_over_fifteen_seconds_is_rejected(client, verified):
 
 
 @pytest.mark.asyncio
-async def test_more_than_three_written_prompts_is_rejected(client, verified):
+async def test_more_than_three_written_prompts_is_rejected(client, verified, fake_storage):
     answers = [
         {"prompt_id": pid, "slot": i + 1, "kind": "written", "body": "Something."}
         for i, pid in enumerate(["life_goal", "simple_pleasures", "greatest_strength", "unusual_skills"])
@@ -168,7 +170,7 @@ async def test_more_than_three_written_prompts_is_rejected(client, verified):
 
 
 @pytest.mark.asyncio
-async def test_unknown_prompt_id_is_rejected(client, verified):
+async def test_unknown_prompt_id_is_rejected(client, verified, fake_storage):
     response = await client.put(
         "/api/profile/prompts",
         headers=verified["headers"],
@@ -178,7 +180,7 @@ async def test_unknown_prompt_id_is_rejected(client, verified):
 
 
 @pytest.mark.asyncio
-async def test_reanswering_a_slot_keeps_the_same_row(client, verified):
+async def test_reanswering_a_slot_keeps_the_same_row(client, verified, fake_storage):
     """Prompt ids must survive an edit — the pairwise loop hangs statistics off them."""
     first = await client.put(
         "/api/profile/prompts",
@@ -197,7 +199,7 @@ async def test_reanswering_a_slot_keeps_the_same_row(client, verified):
 
 
 @pytest.mark.asyncio
-async def test_completeness_lists_what_is_missing(client):
+async def test_completeness_lists_what_is_missing(client, fake_storage):
     account = await register_and_verify(client, f"incomplete@{CAMPUS_DOMAIN}")
     body = (await client.get("/api/profile", headers=account["headers"])).json()
 
@@ -207,5 +209,5 @@ async def test_completeness_lists_what_is_missing(client):
 
 
 @pytest.mark.asyncio
-async def test_profile_is_private_to_its_owner(client):
+async def test_profile_is_private_to_its_owner(client, fake_storage):
     assert (await client.get("/api/profile")).status_code == 401

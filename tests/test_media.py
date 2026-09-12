@@ -8,7 +8,7 @@ test mode, so the pipeline is exercised end to end without torch on disk.
 import pytest
 from sqlalchemy import select
 
-from backend import jobs, storage
+from backend import jobs
 from backend.database import MediaAsset, MediaStatus, ProfileEmbedding
 from backend.handlers import HANDLERS
 from backend.ml.base import FACE_DIM, TEXT_DIM, VOICE_DIM
@@ -16,36 +16,6 @@ from tests.conftest import CAMPUS_DOMAIN, complete_profile, register_and_verify
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake-image-payload" * 8
 WEBM = b"\x1aE\xdf\xa3" + b"fake-audio-payload" * 8
-
-
-@pytest.fixture
-def fake_storage(monkeypatch):
-    """In-memory object store standing in for Supabase."""
-    store: dict[str, bytes] = {}
-
-    async def create_signed_upload(user_id, kind, content_type):
-        key = storage.object_key(user_id, kind, content_type)
-        return storage.SignedUpload(
-            object_key=key,
-            upload_url=f"https://storage.test/upload/{key}",
-            token="signed-token",
-            public_url=f"https://storage.test/public/{key}",
-        )
-
-    async def head(key):
-        return (key in store, len(store[key]) if key in store else None)
-
-    async def download(key):
-        return store[key]
-
-    async def delete(key):
-        store.pop(key, None)
-
-    monkeypatch.setattr(storage, "create_signed_upload", create_signed_upload)
-    monkeypatch.setattr(storage, "head", head)
-    monkeypatch.setattr(storage, "download", download)
-    monkeypatch.setattr(storage, "delete", delete)
-    return store
 
 
 async def request_upload(client, headers, *, kind="photo", content_type="image/jpeg", size=1000):
@@ -187,7 +157,13 @@ async def test_only_the_first_photo_becomes_primary(client, verified, fake_stora
 @pytest.mark.asyncio
 async def test_voice_produces_transcript_and_two_vectors(client, verified, fake_storage, db_sessionmaker):
     """Timbre and content are separate axes — both must be populated."""
-    await complete_profile(client, verified["headers"], visible_as=["woman"], interested_in=["man"])
+    await complete_profile(
+        client,
+        verified["headers"],
+        visible_as=["woman"],
+        interested_in=["man"],
+        store=fake_storage,
+    )
 
     body = (await request_upload(client, verified["headers"], kind="voice", content_type="audio/webm")).json()
     fake_storage[body["object_key"]] = WEBM
@@ -197,7 +173,9 @@ async def test_voice_produces_transcript_and_two_vectors(client, verified, fake_
         json={"duration_ms": 9000},
     )
 
-    assert await run_jobs(db_sessionmaker) == 1
+    # Completing the profile also queues a photo job and a text refresh, so
+    # the count is not the point here — the resulting vectors are.
+    assert await run_jobs(db_sessionmaker) >= 1
 
     async with db_sessionmaker() as db:
         asset = await db.get(MediaAsset, body["asset_id"])
@@ -237,3 +215,49 @@ async def test_media_belongs_to_its_owner(client, verified, fake_storage):
 
     confirm = await client.post(f"/api/media/{body['asset_id']}/confirm", headers=other["headers"], json={})
     assert confirm.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_text_vector_follows_the_words_not_the_audio(client, verified, fake_storage, db_sessionmaker):
+    """Editing prompts must rebuild the content vector on its own.
+
+    The clip and the written answers can arrive in either order, and a prompt
+    edited a week later still has to be reflected — so the embedding cannot be
+    a side effect of uploading audio.
+    """
+    await client.put(
+        "/api/profile/prompts",
+        headers=verified["headers"],
+        json={
+            "answers": [
+                {"prompt_id": "life_goal", "slot": 1, "kind": "written", "body": "Sail somewhere far."}
+            ]
+        },
+    )
+    await run_jobs(db_sessionmaker)
+
+    async with db_sessionmaker() as db:
+        first = (await db.execute(select(ProfileEmbedding))).scalars().one()
+        before = list(first.text_vector)
+    assert len(before) == TEXT_DIM
+
+    await client.put(
+        "/api/profile/prompts",
+        headers=verified["headers"],
+        json={
+            "answers": [
+                {
+                    "prompt_id": "life_goal",
+                    "slot": 1,
+                    "kind": "written",
+                    "body": "Something completely different.",
+                }
+            ]
+        },
+    )
+    await run_jobs(db_sessionmaker)
+
+    async with db_sessionmaker() as db:
+        after = list((await db.execute(select(ProfileEmbedding))).scalars().one().text_vector)
+
+    assert after != before, "editing a prompt must change the content vector"

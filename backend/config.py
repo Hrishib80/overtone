@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # general-purpose provider; see the architecture doc, model stack.
     sarvam_api_key: str = ""
     sarvam_base_url: str = "https://api.sarvam.ai"
+    # saarika transcribes in the language spoken; saaras translates to
+    # English, which would undo the point of a multilingual embedder.
+    # Pinned and configurable because Sarvam retires versions.
+    sarvam_model: str = "saarika:v2.5"
 
     # Worker. Real models are opt-in outside production: loading one can pull
     # gigabytes from HuggingFace, which should never happen because someone ran

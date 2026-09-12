@@ -17,10 +17,13 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend import access, options
+from backend import access, jobs, options
 from backend.auth import current_user
 from backend.database import (
     GenderIdentity,
+    MediaAsset,
+    MediaKind,
+    MediaStatus,
     Profile,
     PromptKind,
     PromptLibrary,
@@ -376,6 +379,10 @@ async def set_prompts(
         if slot not in submitted:
             await db.delete(row)
 
+    # The content vector follows the words, so it is rebuilt on every edit
+    # rather than only when a voice clip happens to be uploaded.
+    await jobs.enqueue(db, jobs.JobKind.refresh_text, {"user_id": user.id}, subject_id=user.id)
+
     await db.commit()
     log.info("prompts_updated", user_id=user.id, count=len(payload.answers))
     return await get_profile(user=user, db=db)
@@ -389,7 +396,22 @@ async def _completeness(db: AsyncSession, user: User, profile: Profile) -> dict[
     written = sum(1 for a in answers if a.kind == PromptKind.written)
     voice = sum(1 for a in answers if a.kind == PromptKind.voice)
 
+    photos = (
+        (
+            await db.execute(
+                select(MediaAsset)
+                .where(MediaAsset.user_id == user.id)
+                .where(MediaAsset.kind == MediaKind.photo)
+                .where(MediaAsset.status != MediaStatus.rejected)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
     missing = []
+    if not photos:
+        missing.append("photo")
     if not visible_as:
         missing.append("visible_as")
     if not interested_in:

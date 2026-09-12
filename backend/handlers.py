@@ -22,6 +22,8 @@ from backend.database import (
     PromptResponse,
     utcnow,
 )
+from backend.jobs import JobKind
+from backend.jobs import enqueue as jobs_enqueue
 from backend.logging_config import get_logger
 
 log = get_logger(__name__)
@@ -125,8 +127,8 @@ async def process_voice(db: AsyncSession, payload: dict[str, Any]) -> None:
     row.transcript = transcript.text
     row.transcript_language = transcript.language
 
-    # The content vector is the whole profile's words, not just this clip:
-    # three written answers plus what was spoken, embedded together.
+    # Attach the transcript to the answer it came from, so Your Read can quote
+    # the actual sentence later.
     answers = (
         (
             await db.execute(
@@ -138,15 +140,6 @@ async def process_voice(db: AsyncSession, payload: dict[str, Any]) -> None:
         .scalars()
         .all()
     )
-    parts = [a.body.strip() for a in answers if a.kind == PromptKind.written and a.body]
-    if transcript.text:
-        parts.append(transcript.text)
-
-    if parts:
-        row.text_vector = ml.text_encoder().encode("\n".join(parts))
-
-    # Keep the transcript on the response it came from too, so Your Read can
-    # quote the actual sentence later.
     voice_answer = next((a for a in answers if a.kind == PromptKind.voice), None)
     if voice_answer is not None:
         voice_answer.transcript = transcript.text
@@ -156,16 +149,51 @@ async def process_voice(db: AsyncSession, payload: dict[str, Any]) -> None:
     asset.processed_at = utcnow()
     await db.commit()
 
+    # The content vector is rebuilt separately: the clip and the written
+    # answers arrive in either order, and prompts can be edited afterwards.
+    await jobs_enqueue(db, JobKind.refresh_text, {"user_id": asset.user_id}, subject_id=asset.user_id)
+    await db.commit()
+
     log.info(
         "voice_processed",
         asset_id=asset.id,
         language=transcript.language,
+        confidence=transcript.language_confidence,
         transcript_chars=len(transcript.text),
-        text_sources=len(parts),
     )
+
+
+async def refresh_text(db: AsyncSession, payload: dict[str, Any]) -> None:
+    """Rebuild the content vector from the profile's current words.
+
+    Enqueued whenever prompts change, which decouples it from the voice upload
+    entirely: the clip and the written answers can land in either order, and a
+    later edit is picked up without touching the audio again.
+    """
+    user_id = payload["user_id"]
+    row = await _embedding_row(db, user_id)
+
+    answers = (
+        (
+            await db.execute(
+                select(PromptResponse).where(PromptResponse.user_id == user_id).order_by(PromptResponse.slot)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    parts = [a.body.strip() for a in answers if a.kind == PromptKind.written and a.body]
+    if row.transcript:
+        parts.append(row.transcript)
+
+    row.text_vector = ml.text_encoder().encode("\n".join(parts)) if parts else None
+    await db.commit()
+    log.info("text_refreshed", user_id=user_id, sources=len(parts))
 
 
 HANDLERS = {
     "process_photo": process_photo,
     "process_voice": process_voice,
+    "refresh_text": refresh_text,
 }

@@ -61,18 +61,23 @@ class SarvamTranscriber:
                 f"{self.base_url}/speech-to-text",
                 headers={"api-subscription-key": self.api_key},
                 files={"file": (filename, audio_bytes, "audio/webm")},
-                data={"model": "saarika:v2", "language_code": code},
+                data={"model": settings.sarvam_model, "language_code": code},
             )
             response.raise_for_status()
             body = response.json()
 
         detected = (body.get("language_code") or "").split("-")[0] or None
-        log.info("transcribed", chars=len(body.get("transcript") or ""), language=detected)
+        confidence = body.get("language_probability")
+        text = (body.get("transcript") or "").strip()
 
-        return Transcript(
-            text=(body.get("transcript") or "").strip(),
+        log.info(
+            "transcribed",
+            chars=len(text),
             language=detected,
+            confidence=confidence,
+            model=settings.sarvam_model,
         )
+        return Transcript(text=text, language=detected, language_confidence=confidence)
 
 
 class StubTranscriber:
@@ -88,4 +93,5 @@ class StubTranscriber:
         return Transcript(
             text=f"[stub transcript of {len(audio_bytes)} bytes]",
             language=language or "en",
+            language_confidence=1.0,
         )

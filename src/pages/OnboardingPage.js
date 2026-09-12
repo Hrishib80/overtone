@@ -2,6 +2,7 @@ import { createElement } from '../utils/dom.js';
 import api from '../services/api.js';
 import router from '../services/router.js';
 import { toast } from '../utils/toast.js';
+import { gateMessage, uploadFile } from '../services/upload.js';
 
 /* Labels the machine name can't produce well on its own. Anything absent
    falls back to prettify(), which handles the ordinary cases. */
@@ -105,7 +106,7 @@ export default {
     // ---- header ----------------------------------------------------------
     const head = createElement('header', { className: 'ob__head' });
     const headInner = createElement('div', { className: 'ob__head-inner' });
-    const stepLabel = createElement('span', { className: 'ob__step' }, 'Step 1 of 3');
+    const stepLabel = createElement('span', { className: 'ob__step' }, 'Step 1 of 4');
     const progress = createElement('div', { className: 'progress' });
     const bar = createElement('div', { className: 'progress__bar', style: 'width:33%' });
     progress.append(bar);
@@ -200,7 +201,83 @@ export default {
 
     step2.append(intentions.wrap, relType.wrap, pair, languages.wrap, religion.wrap, vices);
 
-    // ---- step 3: prompts -------------------------------------------------
+    // ---- step 3: photos --------------------------------------------------
+    const stepPhotos = createElement('section', { className: 'stack', hidden: 'true' });
+    stepPhotos.append(
+      createElement('h2', {}, 'Your photo'),
+      createElement(
+        'p',
+        { className: 'ob__lede' },
+        'One clear photo of your face, on its own. It is the only photo people see while choosing, so it stays the same every time.'
+      )
+    );
+
+    const photoGrid = createElement('div', { className: 'photo-grid' });
+    const photoInput = createElement('input', {
+      type: 'file',
+      accept: 'image/jpeg,image/png,image/webp',
+      className: 'visually-hidden',
+      id: 'photo-input',
+      multiple: 'true',
+    });
+
+    const addTile = createElement('button', { className: 'photo-add', type: 'button' });
+    addTile.append(
+      createElement('span', { className: 'photo-add__plus' }, '+'),
+      createElement('span', { className: 'photo-add__label' }, 'Add photo')
+    );
+    addTile.addEventListener('click', () => photoInput.click());
+    photoGrid.append(addTile);
+    stepPhotos.append(photoGrid, photoInput);
+
+    const uploaded = [];
+
+    photoInput.addEventListener('change', async () => {
+      const files = [...photoInput.files];
+      photoInput.value = '';
+
+      for (const file of files) {
+        const tile = createElement('div', { className: 'photo-tile photo-tile--busy' });
+        tile.append(createElement('img', { src: URL.createObjectURL(file), alt: '' }));
+        const note = createElement('span', { className: 'photo-tile__note' }, 'Uploading...');
+        tile.append(note);
+        photoGrid.insertBefore(tile, addTile);
+
+        try {
+          const result = await uploadFile(file, {
+            kind: 'photo',
+            onProgress: (phase) => {
+              if (phase === 'confirming') note.textContent = 'Checking...';
+            },
+          });
+          tile.className = 'photo-tile photo-tile--ok';
+          note.remove();
+          uploaded.push(result.assetId);
+        } catch (error) {
+          tile.className = 'photo-tile photo-tile--rejected';
+          note.textContent = error.message;
+          toast(error.message, { error: true });
+        }
+      }
+    });
+
+    // The face gate runs in the worker, so its verdict lands after the upload
+    // returns. Check before moving on, otherwise a rejected photo is accepted
+    // here and quietly missing later.
+    async function photosStillValid() {
+      try {
+        const { media } = await api.request('GET', '/api/media');
+        const photos = media.filter((m) => m.kind === 'photo');
+        for (const photo of photos.filter((m) => m.status === 'rejected')) {
+          toast(gateMessage(photo.gate_reason), { error: true });
+        }
+        return photos.some((m) => m.status !== 'rejected');
+      } catch {
+        return true;
+      }
+    }
+
+    // ---- step 4: prompts -------------------------------------------------
     const step3 = createElement('section', { className: 'stack', hidden: 'true' });
     step3.append(
       createElement('h2', {}, 'Say something'),
@@ -264,6 +341,7 @@ export default {
     let recorder_ = null;
     let chunks = [];
     let durationMs = 0;
+    let voiceBlob = null;
     let timer = null;
 
     recBtn.addEventListener('click', async () => {
@@ -273,6 +351,7 @@ export default {
       }
       if (durationMs) {
         durationMs = 0;
+        voiceBlob = null;
         recStatus.textContent = 'Tap to record';
         recBtn.textContent = '●';
         return;
@@ -292,6 +371,7 @@ export default {
           recBtn.textContent = '×';
 
           const blob = new Blob(chunks, { type: 'audio/webm' });
+          voiceBlob = blob;
           recStatus.replaceChildren(
             createElement('span', {}, `Recorded ${(durationMs / 1000).toFixed(1)}s — tap to clear`),
             createElement('audio', { controls: 'true', src: URL.createObjectURL(blob) })
@@ -312,7 +392,7 @@ export default {
       }
     });
 
-    body.append(step1, step2, step3);
+    body.append(step1, step2, stepPhotos, step3);
 
     // ---- footer / navigation --------------------------------------------
     const foot = createElement('footer', { className: 'ob__foot' });
@@ -322,7 +402,7 @@ export default {
     footInner.append(backBtn, nextBtn);
     foot.append(footInner);
 
-    const steps = [step1, step2, step3];
+    const steps = [step1, step2, stepPhotos, step3];
     let index = 0;
 
     function show(next) {
@@ -330,10 +410,10 @@ export default {
       steps.forEach((el, i) => {
         el.hidden = i !== index;
       });
-      stepLabel.textContent = `Step ${index + 1} of 3`;
-      bar.style.width = `${((index + 1) / 3) * 100}%`;
+      stepLabel.textContent = `Step ${index + 1} of ${steps.length}`;
+      bar.style.width = `${((index + 1) / steps.length) * 100}%`;
       backBtn.hidden = index === 0;
-      nextBtn.textContent = index === 2 ? 'Finish' : 'Continue';
+      nextBtn.textContent = index === steps.length - 1 ? 'Finish' : 'Continue';
       body.scrollTo?.({ top: 0 });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -377,6 +457,19 @@ export default {
           return;
         }
 
+        if (index === 2) {
+          if (!uploaded.length) {
+            toast('Add at least one photo to carry on.', { error: true });
+            return;
+          }
+          if (!(await photosStillValid())) {
+            toast('None of those passed. Try a clear photo of just your face.', { error: true });
+            return;
+          }
+          show(3);
+          return;
+        }
+
         const answers = [];
         written.forEach(({ select, answer }, i) => {
           if (select.value && answer.value.trim()) {
@@ -396,11 +489,17 @@ export default {
           toast('Record your voice prompt to finish.', { error: true });
           return;
         }
+        nextBtn.textContent = 'Uploading...';
+        const voiceUpload = await uploadFile(
+          new File([voiceBlob], 'voice.webm', { type: 'audio/webm' }),
+          { kind: 'voice', durationMs }
+        );
+
         answers.push({
           prompt_id: voiceSelect.value,
           slot: 4,
           kind: 'voice',
-          audio_key: `pending/${Date.now()}.webm`,
+          audio_key: voiceUpload.assetId,
           audio_duration_ms: durationMs,
         });
 

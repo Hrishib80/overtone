@@ -55,6 +55,9 @@ class FaceResult:
 class Transcript:
     text: str
     language: str | None = None
+    # How sure the provider is about the language. Low confidence on an empty
+    # transcript usually means the clip is noise rather than speech.
+    language_confidence: float | None = None
     duration_ms: int | None = None
 
 

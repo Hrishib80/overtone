@@ -42,6 +42,7 @@ class JobStatus(enum.StrEnum):
 class JobKind(enum.StrEnum):
     process_photo = "process_photo"
     process_voice = "process_voice"
+    refresh_text = "refresh_text"
 
 
 class Job(Base):

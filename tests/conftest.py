@@ -21,12 +21,68 @@ import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
+from backend import storage  # noqa: E402
 from backend.app import create_app  # noqa: E402
 from backend.database import Base, Scope, ScopeStatus, SegmentCap, get_db  # noqa: E402
 from backend.seeds import seed_all  # noqa: E402
 
 CAMPUS_DOMAIN = "campus.edu"
 ADULT_BIRTHDATE = date(2003, 5, 17)
+
+
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"fake-image-payload" * 8
+WEBM_BYTES = b"\x1aE\xdf\xa3" + b"fake-audio-payload" * 8
+
+
+@pytest.fixture(autouse=True)
+def fake_storage(monkeypatch):
+    """In-memory object store standing in for Supabase.
+
+    Autouse, because almost every flow now touches an upload and these tests
+    are about our logic rather than Supabase's.
+    """
+    store: dict[str, bytes] = {}
+
+    async def create_signed_upload(user_id, kind, content_type):
+        key = storage.object_key(user_id, kind, content_type)
+        return storage.SignedUpload(
+            object_key=key,
+            upload_url=f"https://storage.test/upload/{key}",
+            token="signed-token",
+            public_url=f"https://storage.test/public/{key}",
+        )
+
+    async def head(key):
+        return (key in store, len(store[key]) if key in store else None)
+
+    async def download(key):
+        return store[key]
+
+    async def delete(key):
+        store.pop(key, None)
+
+    monkeypatch.setattr(storage, "create_signed_upload", create_signed_upload)
+    monkeypatch.setattr(storage, "head", head)
+    monkeypatch.setattr(storage, "download", download)
+    monkeypatch.setattr(storage, "delete", delete)
+    return store
+
+
+async def upload_media(client, headers, store, *, kind="photo", content_type="image/jpeg", body=None):
+    """Walk the real three-step upload, with storage faked underneath."""
+    ticket = await client.post(
+        "/api/media/upload-url",
+        headers=headers,
+        json={"kind": kind, "content_type": content_type, "byte_size": 1000},
+    )
+    assert ticket.status_code == 201, ticket.text
+    payload = ticket.json()
+
+    store[payload["object_key"]] = body or (PNG_BYTES if kind == "photo" else WEBM_BYTES)
+
+    confirmed = await client.post(f"/api/media/{payload['asset_id']}/confirm", headers=headers, json={})
+    assert confirmed.status_code == 200, confirmed.text
+    return payload["asset_id"]
 
 
 @pytest.fixture(scope="session")
@@ -120,8 +176,9 @@ async def complete_profile(
     *,
     visible_as: list[str],
     interested_in: list[str],
+    store: dict | None = None,
 ) -> None:
-    """Fill in everything `submit` requires: identity, intentions, prompts."""
+    """Fill in everything `submit` requires: identity, intentions, photo, prompts."""
     patch = await client.patch(
         "/api/profile",
         headers=headers,
@@ -153,6 +210,9 @@ async def complete_profile(
         },
     )
     assert prompts.status_code == 200, prompts.text
+
+    if store is not None:
+        await upload_media(client, headers, store)
 
 
 @pytest_asyncio.fixture
