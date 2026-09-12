@@ -1,8 +1,0 @@
-/* Chat view on laptop — fill area beside sidebar */
-@media (min-width: 768px) {
-  .chat-page .chat-view {
-    max-width: 900px;
-    margin: 0 auto;
-    width: 100%;
-  }
-}

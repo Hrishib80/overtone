@@ -1,0 +1,118 @@
+/* Design tokens.
+   Palette measured from the Study of Us front page: two poles (red / blue) on a
+   sky ground, white ink, Inter on a real variable axis so weight can animate.
+   Neutrals are pulled toward the blue rather than left grey — that is what
+   keeps a two-colour system reading as chosen rather than inherited. */
+
+:root {
+  /* The two poles */
+  --red: #b50000;
+  --red-strong: #8f0000;
+  --red-wash: #fdeceb;
+  --blue: #003fb6;
+  --blue-strong: #00308c;
+  --blue-wash: #e9f0fc;
+
+  /* Ground */
+  --sky: #7fb8ea;
+  --cyan: #d8fdff;
+
+  /* Neutrals, biased blue */
+  --ink: #0b1420;
+  --ink-2: #2c3e52;
+  --muted: #5b6e83;
+  --surface: #ffffff;
+  --surface-2: #eef4fa;
+  --ground: #f3f7fb;
+  --rule: #d7e3ef;
+  --rule-strong: #b9cbdd;
+
+  /* Semantic, separate from the accent poles */
+  --ok: #0f6b52;
+  --ok-wash: #e4f3ed;
+  --warn: #8a5300;
+  --warn-wash: #fbf1e0;
+
+  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Type scale — fluid, so one scale covers phone and laptop */
+  --t--1: clamp(0.78rem, 0.76rem + 0.1vw, 0.84rem);
+  --t-0: clamp(0.95rem, 0.92rem + 0.15vw, 1.05rem);
+  --t-1: clamp(1.1rem, 1.03rem + 0.3vw, 1.3rem);
+  --t-2: clamp(1.35rem, 1.2rem + 0.7vw, 1.9rem);
+  --t-3: clamp(1.9rem, 1.5rem + 1.8vw, 3rem);
+  --t-4: clamp(2.6rem, 1.8rem + 3.6vw, 5rem);
+
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+
+  --radius: 2px;
+  --radius-lg: 4px;
+
+  /* Tap targets stay at least this tall on touch screens */
+  --tap: 48px;
+
+  --shadow: 0 1px 2px rgba(11, 20, 32, 0.06);
+  --shadow-lift: 0 6px 24px rgba(11, 20, 32, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --red: #f2564d;
+    --red-strong: #ff7a70;
+    --red-wash: #2a1210;
+    --blue: #7fb8ea;
+    --blue-strong: #a8cff2;
+    --blue-wash: #10202f;
+
+    --ink: #e9eff6;
+    --ink-2: #c2d1e0;
+    --muted: #8ca1b7;
+    --surface: #101a25;
+    --surface-2: #17232f;
+    --ground: #080e15;
+    --rule: #1f2e3c;
+    --rule-strong: #33475a;
+
+    --ok: #4fbf9a;
+    --ok-wash: #0f2620;
+    --warn: #e0a64a;
+    --warn-wash: #2a2213;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-lift: 0 6px 24px rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root[data-theme='dark'] {
+  --red: #f2564d;
+  --red-strong: #ff7a70;
+  --red-wash: #2a1210;
+  --blue: #7fb8ea;
+  --blue-strong: #a8cff2;
+  --blue-wash: #10202f;
+
+  --ink: #e9eff6;
+  --ink-2: #c2d1e0;
+  --muted: #8ca1b7;
+  --surface: #101a25;
+  --surface-2: #17232f;
+  --ground: #080e15;
+  --rule: #1f2e3c;
+  --rule-strong: #33475a;
+
+  --ok: #4fbf9a;
+  --ok-wash: #0f2620;
+  --warn: #e0a64a;
+  --warn-wash: #2a2213;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-lift: 0 6px 24px rgba(0, 0, 0, 0.5);
+}

@@ -1,0 +1,188 @@
+/* The landing composition.
+   Study of Us's front page is structurally already this screen: a coloured
+   ground, and two translucent circles you choose between. Here the two blots
+   are the two ways in — join, or sign in. */
+
+.landing {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  background:
+    radial-gradient(120% 90% at 50% 8%, #a8d2f4 0%, var(--sky) 46%, #5e9fd6 100%);
+  color: #fff;
+  overflow: hidden;
+  position: relative;
+}
+
+.landing__stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-6);
+  padding: var(--s-7) var(--s-4) var(--s-6);
+  text-align: center;
+}
+
+.landing__mark {
+  font-size: var(--t-4);
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  line-height: 0.9;
+  color: #fff;
+  text-shadow: 0 2px 18px rgba(11, 20, 32, 0.18);
+}
+
+.landing__mark em {
+  font-style: normal;
+  font-weight: 300;
+  display: block;
+}
+
+.landing__tagline {
+  max-width: 22ch;
+  font-size: var(--t-1);
+  font-weight: 300;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.93);
+  text-wrap: balance;
+}
+
+/* The two choices. Circles, because that is the source's single strongest
+   idea and it maps onto a binary choice without a card in sight. */
+.picks {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-5);
+  flex-wrap: wrap;
+}
+
+.pick {
+  --pull-x: 0px;
+  --pull-y: 0px;
+  --scale: 1;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 132px;
+  height: 132px;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  font-family: var(--font);
+  font-size: var(--t-1);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transform: translate(var(--pull-x), var(--pull-y)) scale(var(--scale));
+  transition:
+    transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    font-weight 0.2s ease,
+    filter 0.28s ease;
+}
+
+.pick--red {
+  background: rgba(181, 0, 0, 0.87);
+}
+.pick--blue {
+  background: rgba(0, 63, 182, 0.765);
+}
+
+.pick:hover,
+.pick:focus-visible {
+  --scale: 1.13;
+  font-weight: 700;
+  filter: saturate(1.15);
+}
+
+.pick span {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
+}
+
+.landing__foot {
+  padding: var(--s-4);
+  text-align: center;
+  font-family: var(--mono);
+  font-size: var(--t--1);
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+@media (min-width: 700px) {
+  .landing__stage {
+    gap: var(--s-7);
+  }
+  .pick {
+    width: 172px;
+    height: 172px;
+    font-size: var(--t-2);
+  }
+  .picks {
+    gap: var(--s-7);
+  }
+}
+
+/* Phones: the blots sit side by side but must not overflow a 320px screen. */
+@media (max-width: 380px) {
+  .pick {
+    width: 118px;
+    height: 118px;
+  }
+  .picks {
+    gap: var(--s-4);
+  }
+}
+
+/* ---- Auth panel --------------------------------------------------------- */
+
+.auth {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: var(--ground);
+}
+
+.auth__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface);
+}
+
+.auth__back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.auth__title {
+  font-size: var(--t-1);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.auth__body {
+  width: 100%;
+  max-width: 440px;
+  margin-inline: auto;
+  padding: var(--s-6) var(--s-4) var(--s-8);
+}
+
+@media (min-width: 640px) {
+  .auth__body {
+    padding-block: var(--s-8);
+  }
+}

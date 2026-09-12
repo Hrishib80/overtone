@@ -34,3 +34,7 @@ media_uploads/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local dev database
+*.db
+*.sqlite3

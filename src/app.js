@@ -2,48 +2,37 @@ import router from './services/router.js';
 import store from './services/store.js';
 import api from './services/api.js';
 
-// Pages
-import AuthPage from './pages/AuthPage.js';
-import ProfileSetupPage from './pages/ProfileSetupPage.js';
-import DiscoverPage from './pages/DiscoverPage.js';
-import MatchesPage from './pages/MatchesPage.js';
-import ChatListPage from './pages/ChatListPage.js';
-import ChatPage from './pages/ChatPage.js';
-import ProfilePage from './pages/ProfilePage.js';
+import LandingPage from './pages/LandingPage.js';
+import { JoinPage, SignInPage } from './pages/AuthPage.js';
+import VerifyPage from './pages/VerifyPage.js';
+import OnboardingPage from './pages/OnboardingPage.js';
+import StatusPage from './pages/StatusPage.js';
 
-document.addEventListener('DOMContentLoaded', async () => {
-  // Register routes
-  router.registerRoutes({
-    '/auth': AuthPage,
-    '/setup': ProfileSetupPage,
-    '/': DiscoverPage,
-    '/discover': DiscoverPage,
-    '/matches': MatchesPage,
-    '/chat': ChatListPage,
-    '/chat/:id': ChatPage,
-    '/profile': ProfilePage,
+async function boot() {
+  router.register({
+    '/': LandingPage,
+    '/join': JoinPage,
+    '/signin': SignInPage,
+    '/verify': VerifyPage,
+    '/onboarding': OnboardingPage,
+    '/status': StatusPage,
   });
 
-  // Intercept data-link clicks for SPA navigation
-  document.addEventListener('click', (e) => {
-    const link = e.target.closest('[data-link]');
-    if (link) {
-      e.preventDefault();
-      const href = link.getAttribute('href');
-      if (href) router.navigate(href);
-    }
-  });
-
-  // Check auth and initialize
-  const token = store.getState().token;
-  if (token) {
+  // Resolve the account before the first render, so the router never has to
+  // guess where a signed-in visitor belongs.
+  if (store.getState().token) {
     try {
-      const user = await api.getMe();
-      store.setState({ currentUser: user });
-    } catch (err) {
-      store.setState({ token: null, currentUser: null });
+      store.setState({ me: await api.getMe() });
+    } catch {
+      store.signOut();
     }
   }
 
-  router.init();
-});
+  router.start();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}

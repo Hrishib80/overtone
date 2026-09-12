@@ -1,105 +1,81 @@
 import store from './store.js';
 
+/* Where an account belongs, given its status. Onboarding is a funnel: you
+   cannot skip ahead, and you cannot fall back into a step you've finished. */
+const HOME_FOR_STATUS = {
+  pending_verification: '/verify',
+  onboarding: '/onboarding',
+  waitlisted: '/status',
+  active: '/status',
+};
+
+const PUBLIC_ROUTES = new Set(['/', '/join', '/signin']);
+
 class Router {
   constructor() {
     this.routes = {};
-    this.currentPath = null;
-    this.activePage = null;
+    this.current = null;
+    this.active = null;
   }
 
-  registerRoutes(routesMap) {
-    this.routes = routesMap;
+  register(routes) {
+    this.routes = routes;
   }
 
-  init() {
-    window.addEventListener('popstate', () => {
-      this.handleRoute(window.location.pathname);
+  start() {
+    window.addEventListener('popstate', () => this.resolve(location.pathname));
+    document.addEventListener('click', (event) => {
+      const link = event.target.closest('[data-link]');
+      if (!link) return;
+      event.preventDefault();
+      this.go(link.getAttribute('href'));
     });
-    this.handleRoute(window.location.pathname);
+    this.resolve(location.pathname);
   }
 
-  navigate(path) {
-    if (this.currentPath === path) return;
-    window.history.pushState(null, '', path);
-    this.handleRoute(path);
+  go(path, { replace = false } = {}) {
+    if (path === this.current) return;
+    history[replace ? 'replaceState' : 'pushState'](null, '', path);
+    this.resolve(path);
   }
 
-  matchRoute(path) {
-    for (const route in this.routes) {
-      if (route === path) return { component: this.routes[route], params: {} };
-      
-      const routeParts = route.split('/');
-      const pathParts = path.split('/');
-      
-      if (routeParts.length === pathParts.length) {
-        let match = true;
-        const params = {};
-        
-        for (let i = 0; i < routeParts.length; i++) {
-          if (routeParts[i].startsWith(':')) {
-            params[routeParts[i].slice(1)] = pathParts[i];
-          } else if (routeParts[i] !== pathParts[i]) {
-            match = false;
-            break;
-          }
-        }
-        
-        if (match) {
-          return { component: this.routes[route], params };
-        }
-      }
-    }
-    return null;
+  /** Where this visitor should be, or null if the path they asked for is fine. */
+  redirectFor(path) {
+    const { token, me } = store.getState();
+
+    if (!token) return PUBLIC_ROUTES.has(path) ? null : '/';
+    if (!me) return null; // still loading; app.js resolves before starting
+
+    const home = HOME_FOR_STATUS[me.status] || '/';
+    return path === home ? null : home;
   }
 
-  async handleRoute(path) {
-    const token = store.getState().token || localStorage.getItem('overtone_token');
-    
-    // Auth Guard
-    if (!token && path !== '/auth') {
-      this.navigate('/auth');
-      return;
-    }
-    if (token && path === '/auth') {
-      this.navigate('/');
-      return;
+  async resolve(path) {
+    const redirect = this.redirectFor(path);
+    if (redirect) {
+      history.replaceState(null, '', redirect);
+      path = redirect;
     }
 
-    const matched = this.matchRoute(path);
-    if (!matched) {
-      console.warn('Route not found:', path);
-      this.navigate('/');
-      return;
-    }
+    const page = this.routes[path] || this.routes['/'];
+    this.current = path;
 
-    this.currentPath = path;
-    const { component, params } = matched;
-    
-    const renderPage = async () => {
-      const appRoot = document.getElementById('app');
-      
-      if (this.activePage && typeof this.activePage.destroy === 'function') {
-        this.activePage.destroy();
-      }
-      
-      appRoot.innerHTML = '';
-      
-      const pageElement = await component.render(params);
-      this.activePage = pageElement;
-      
-      appRoot.appendChild(pageElement);
-      
-      // Setup lifecycle hooks if needed
-      if (component.onMount) {
-        component.onMount();
-      }
-    };
+    const root = document.getElementById('app');
+    this.active?.destroy?.();
+    root.replaceChildren();
 
-    if (document.startViewTransition) {
-      document.startViewTransition(() => renderPage());
-    } else {
-      await renderPage();
-    }
+    const view = await page.render();
+    this.active = view;
+    root.append(view);
+    view.mounted?.();
+  }
+
+  /** Re-read the account and send the user wherever they now belong. */
+  async refresh(me) {
+    store.setState({ me });
+    const home = HOME_FOR_STATUS[me.status] || '/';
+    history.replaceState(null, '', home);
+    await this.resolve(home);
   }
 }
 

@@ -1,69 +1,73 @@
 import store from './store.js';
-import router from './router.js';
 
-function getApiBaseUrl() {
-  const configuredUrl = (import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '');
+function baseUrl() {
+  const configured = (import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '');
+  // Method paths already carry /api; tolerate an accidental /api suffix here.
+  return configured.endsWith('/api') ? configured.slice(0, -4) : configured;
+}
 
-  // API methods already include /api. This also accepts an accidentally
-  // configured /api suffix without producing /api/api/auth/login.
-  return configuredUrl.endsWith('/api')
-    ? configuredUrl.slice(0, -4)
-    : configuredUrl;
+export class ApiError extends Error {
+  constructor(message, { status, code, fields } = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.fields = fields || [];
+  }
 }
 
 class Api {
   constructor() {
-    this.baseUrl = getApiBaseUrl();
+    this.base = baseUrl();
   }
 
-  async request(method, path, body = null) {
-    const headers = {
-      'Content-Type': 'application/json'
-    };
-
+  async request(method, path, body) {
+    const headers = { 'Content-Type': 'application/json' };
     const token = store.getState().token;
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+    if (token) headers.Authorization = `Bearer ${token}`;
 
-    const options = { method, headers };
-
-    if (body) {
-      options.body = JSON.stringify(body);
-    }
-
+    let response;
     try {
-      const response = await fetch(`${this.baseUrl}${path}`, options);
-
-      if (response.status === 401) {
-        store.setState({ token: null, currentUser: null });
-        router.navigate('/auth');
-        const err = new Error('Unauthorized');
-        err.status = 401;
-        throw err;
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const err = new Error(errorData.detail || `API Error: ${response.status}`);
-        err.status = response.status;
-        throw err;
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('API Request failed:', error);
-      throw error;
+      response = await fetch(`${this.base}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch {
+      throw new ApiError("Can't reach Overtone. Check your connection.", { status: 0 });
     }
+
+    if (response.status === 401) {
+      store.setState({ token: null, me: null });
+      throw new ApiError('Your session has expired. Sign in again.', { status: 401 });
+    }
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const error = payload?.error || {};
+      throw new ApiError(error.message || `Something went wrong (${response.status}).`, {
+        status: response.status,
+        code: error.code,
+        fields: payload?.fields,
+      });
+    }
+
+    return payload;
   }
 
-  // ---- Auth (backend prefix: /api/auth) ----
-  register(email, password, displayName) {
+  // ---- auth ----
+  register({ email, password, displayName, birthdate }) {
     return this.request('POST', '/api/auth/register', {
       email,
       password,
       display_name: displayName,
+      birthdate,
     });
+  }
+
+  verifyEmail(token) {
+    return this.request('POST', '/api/auth/verify-email', { token });
   }
 
   login(email, password) {
@@ -74,64 +78,25 @@ class Api {
     return this.request('GET', '/api/auth/me');
   }
 
-  // ---- Matching (backend prefix: /api) ----
-  getMatchCandidates(userId, limit = 15) {
-    return this.request('POST', '/api/match', {
-      user_id: userId,
-      limit,
-    });
+  // ---- profile ----
+  getOptions() {
+    return this.request('GET', '/api/profile/options');
   }
 
-  sendLike(toUserId, targetType, targetId, commentText = null) {
-    return this.request('POST', '/api/like', {
-      to_user_id: toUserId,
-      target_type: targetType,
-      target_id: targetId,
-      comment_text: commentText,
-    });
+  getProfile() {
+    return this.request('GET', '/api/profile');
   }
 
-  getReceivedLikes() {
-    return this.request('GET', '/api/likes/received');
+  patchProfile(changes) {
+    return this.request('PATCH', '/api/profile', changes);
   }
 
-  getMatches() {
-    return this.request('GET', '/api/matches');
+  setPrompts(answers) {
+    return this.request('PUT', '/api/profile/prompts', { answers });
   }
 
-  ingestProfile(profileData) {
-    return this.request('POST', '/api/ingest_profile', profileData);
-  }
-
-  async uploadMedia(file) {
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    const token = store.getState().token;
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    
-    const res = await fetch(`${this.baseUrl}/api/upload_media`, {
-      method: 'POST',
-      headers,
-      body: formData
-    });
-    
-    if (!res.ok) throw new Error('Failed to upload media');
-    return res.json();
-  }
-
-  // ---- Chat (backend prefix: /api/chat) ----
-  getChatMessages(matchId, page = 1, limit = 50) {
-    return this.request('GET', `/api/chat/${matchId}/messages?page=${page}&limit=${limit}`);
-  }
-
-  markChatRead(matchId) {
-    return this.request('POST', `/api/chat/${matchId}/read`);
-  }
-
-  getConversations() {
-    return this.request('GET', '/api/chat/conversations');
+  submitProfile() {
+    return this.request('POST', '/api/profile/submit');
   }
 }
 

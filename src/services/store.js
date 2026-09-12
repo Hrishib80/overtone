@@ -1,34 +1,31 @@
+const TOKEN_KEY = 'overtone_token';
+
+function readToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    // Private windows and blocked site data throw on access.
+    return null;
+  }
+}
+
+function writeToken(value) {
+  try {
+    if (value) localStorage.setItem(TOKEN_KEY, value);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* session-only is an acceptable fallback */
+  }
+}
+
 class Store {
   constructor() {
     this.state = {
-      currentUser: null,
-      token: localStorage.getItem('overtone_token') || null,
-      matches: [],
-      conversations: [],
-      activeCall: null,
-      notifications: {
-        likes: 0,
-        messages: 0
-      }
+      token: readToken(),
+      me: null,
+      options: null,
     };
     this.listeners = new Map();
-  }
-
-  subscribe(key, callback) {
-    if (!this.listeners.has(key)) {
-      this.listeners.set(key, new Set());
-    }
-    this.listeners.get(key).add(callback);
-    
-    return () => {
-      this.listeners.get(key).delete(callback);
-    };
-  }
-
-  notify(key, value) {
-    if (this.listeners.has(key)) {
-      this.listeners.get(key).forEach(callback => callback(value));
-    }
   }
 
   getState() {
@@ -37,20 +34,21 @@ class Store {
 
   setState(updates) {
     for (const [key, value] of Object.entries(updates)) {
-      if (this.state[key] !== value) {
-        this.state[key] = value;
-        
-        if (key === 'token') {
-          if (value) {
-            localStorage.setItem('overtone_token', value);
-          } else {
-            localStorage.removeItem('overtone_token');
-          }
-        }
-        
-        this.notify(key, value);
-      }
+      if (this.state[key] === value) continue;
+      this.state[key] = value;
+      if (key === 'token') writeToken(value);
+      this.listeners.get(key)?.forEach((cb) => cb(value));
     }
+  }
+
+  subscribe(key, callback) {
+    if (!this.listeners.has(key)) this.listeners.set(key, new Set());
+    this.listeners.get(key).add(callback);
+    return () => this.listeners.get(key)?.delete(callback);
+  }
+
+  signOut() {
+    this.setState({ token: null, me: null });
   }
 }
 
