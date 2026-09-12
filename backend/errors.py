@@ -58,6 +58,16 @@ class Conflict(AppError):
     message = "That conflicts with something that already exists."
 
 
+class RateLimited(AppError):
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+    code = "rate_limited"
+    message = "That's a few too many for now. Try again shortly."
+
+    def __init__(self, message: str | None = None, *, retry_after: int | None = None, **context: Any) -> None:
+        super().__init__(message, **context)
+        self.retry_after = retry_after
+
+
 class ServiceUnavailable(AppError):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     code = "service_unavailable"
@@ -76,7 +86,18 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _app_error(_request: Request, exc: AppError) -> JSONResponse:
         log.warning("app_error", code=exc.code, message=exc.message, **exc.context)
-        return JSONResponse(status_code=exc.status_code, content=_payload(exc.code, exc.message))
+        headers = {}
+        # The one piece of machine-readable advice in the error protocol: a
+        # client that backs off blindly is indistinguishable from one that
+        # hammers, and Retry-After is what tells them apart.
+        retry_after = getattr(exc, "retry_after", None)
+        if retry_after:
+            headers["Retry-After"] = str(retry_after)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=_payload(exc.code, exc.message),
+            headers=headers or None,
+        )
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(_request: Request, exc: StarletteHTTPException) -> JSONResponse:

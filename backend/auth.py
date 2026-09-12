@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
@@ -24,6 +24,7 @@ from backend.database import (
 )
 from backend.errors import AppError, Conflict, NotAuthenticated, NotFound
 from backend.logging_config import get_logger
+from backend.ratelimit import LOGIN_PER_ACCOUNT, LOGIN_PER_ADDRESS, REGISTER, client_key, consume
 
 log = get_logger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -97,7 +98,11 @@ class VerifyRequest(BaseModel):
 
 
 @router.post("/register", status_code=201)
-async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)) -> dict[str, object]:
+async def register(
+    req: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)
+) -> dict[str, object]:
+    # Counted per address, since there is no account to count against yet.
+    await consume(db, REGISTER, client_key(request))
     email = req.email.strip().lower()
 
     # Campus first, then age. Both refuse before an account exists.
@@ -176,8 +181,14 @@ async def verify_email(req: VerifyRequest, db: AsyncSession = Depends(get_db)) -
 
 
 @router.post("/login")
-async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)) -> dict[str, object]:
+async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)) -> dict[str, object]:
     email = req.email.strip().lower()
+    # Per account first, because that is where a brute-force attempt is
+    # aimed and it is the limit that can afford to be tight. The per-address
+    # one is loose on purpose — see the note in backend/ratelimit.py about
+    # what a campus NAT does to an address-keyed limit.
+    await consume(db, LOGIN_PER_ACCOUNT, f"email:{email}")
+    await consume(db, LOGIN_PER_ADDRESS, client_key(request))
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalars().first()
 

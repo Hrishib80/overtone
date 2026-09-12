@@ -814,3 +814,27 @@ class Report(Base):
     reviewer_note = Column(Text, nullable=True)
 
     created_at = Column(UTCDateTime(), nullable=False, default=utcnow)
+
+
+class RateLimitWindow(Base):
+    """One counter, for one bucket, in one window.
+
+    In the database rather than in memory because the app runs more than one
+    worker: a per-process counter makes the real allowance whatever was
+    configured times however many processes happen to be up, which is not a
+    number anybody chose.
+
+    Rows are swept by the worker. See `backend/ratelimit.py` for why the sweep
+    keeps two windows rather than one.
+    """
+
+    __tablename__ = "rate_limit_windows"
+    __table_args__ = (
+        UniqueConstraint("bucket", "window_start", name="uq_rate_limit_window"),
+        Index("ix_rate_limit_sweep", "window_start"),
+    )
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    bucket = Column(String, nullable=False)
+    window_start = Column(UTCDateTime(), nullable=False)
+    count = Column(Integer, nullable=False, default=0)

@@ -1,8 +1,8 @@
-"""phase 05: blocks and reports
+"""phase 05: safety and rate limits
 
-Revision ID: b18d43d7c777
+Revision ID: ee7f324fc0ac
 Revises: 
-Create Date: 2026-09-12 23:24:46.940723
+Create Date: 2026-09-12 23:39:10.070711
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 import pgvector.sqlalchemy
 
 # revision identifiers, used by Alembic.
-revision: str = 'b18d43d7c777'
+revision: str = 'ee7f324fc0ac'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -65,6 +65,17 @@ def upgrade() -> None:
     )
     with op.batch_alter_table('prompt_library', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_prompt_library_category'), ['category'], unique=False)
+
+    op.create_table('rate_limit_windows',
+    sa.Column('id', sa.String(), nullable=False),
+    sa.Column('bucket', sa.String(), nullable=False),
+    sa.Column('window_start', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('count', sa.Integer(), nullable=False),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('bucket', 'window_start', name='uq_rate_limit_window')
+    )
+    with op.batch_alter_table('rate_limit_windows', schema=None) as batch_op:
+        batch_op.create_index('ix_rate_limit_sweep', ['window_start'], unique=False)
 
     op.create_table('scopes',
     sa.Column('id', sa.String(), nullable=False),
@@ -500,6 +511,10 @@ def downgrade() -> None:
         batch_op.drop_index(batch_op.f('ix_scopes_slug'))
 
     op.drop_table('scopes')
+    with op.batch_alter_table('rate_limit_windows', schema=None) as batch_op:
+        batch_op.drop_index('ix_rate_limit_sweep')
+
+    op.drop_table('rate_limit_windows')
     with op.batch_alter_table('prompt_library', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_prompt_library_category'))
 

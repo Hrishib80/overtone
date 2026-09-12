@@ -22,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from backend import jobs, ml  # noqa: E402
+from backend import jobs, ml, ratelimit  # noqa: E402
 from backend.config import settings  # noqa: E402
 from backend.database import AsyncSessionLocal  # noqa: E402
 from backend.handlers import HANDLERS  # noqa: E402
@@ -76,16 +76,18 @@ async def drain(*, limit: int) -> int:
 async def maintenance() -> None:
     """Periodic sweeps that nothing else triggers.
 
-    Both are recovery from something not happening rather than from something
-    failing, which is exactly the kind of work that has no natural caller:
-    a job left `running` by a worker that died is stranded until requeued, and
-    a round-2 pairing nobody returns for would otherwise surface stale
-    whenever that viewer next opens the app.
+    All three are recovery from something *not happening* rather than from
+    something failing, which is the kind of work that has no natural caller: a
+    job left `running` by a worker that died stays stranded until requeued, a
+    round-2 pairing nobody returns for would surface stale whenever that
+    viewer next opens the app, and spent rate-limit windows are never read
+    again but are never deleted by the request that wrote them either.
     """
     try:
         async with AsyncSessionLocal() as db:
             await jobs.reap_stale(db)
             await expire_stale_round_two(db)
+            await ratelimit.sweep(db)
             await db.commit()
     except Exception:
         log.exception("maintenance_failed")

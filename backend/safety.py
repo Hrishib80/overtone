@@ -44,6 +44,7 @@ from backend.database import (
 )
 from backend.errors import AppError, NotFound
 from backend.logging_config import get_logger
+from backend.ratelimit import REPORT, consume
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/api/safety", tags=["safety"])
@@ -275,6 +276,7 @@ async def create_report(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
+    await consume(db, REPORT, user.id)
     row = await report(
         db,
         reporter=user,

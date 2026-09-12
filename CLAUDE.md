@@ -244,6 +244,49 @@ deep-navy `--sky`, are redefined for dark mode.
 own `interested_in` choice reflected back; it says nothing about either
 subject, so round 1's photo-only rule is untouched.
 
+### Safety
+
+**A block is stored one way and read both ways.** Who blocked whom is worth
+keeping, but every surface reads the union — pairing, connections, the inbox,
+the socket. A one-way block leaves the blocked person still seeing and still
+able to reach someone who has removed themselves, which is the exact situation
+it exists for.
+
+Blocking also has to do three things that are not obvious:
+
+1. **Close the conversation.** A thread left alive but unreachable reads as a
+   chat that silently stopped working.
+2. **Forget the affinity.** An unlocked person who is blocked would otherwise
+   sit there unlocked, ready to return the moment the block is lifted.
+3. **Say nothing.** A refused sender gets the wording a stranger gets, being
+   blocked is never listed, and a report's response carries no outcome.
+   Confirming *who* blocked you is what turns a block into a provocation.
+
+**Reporting blocks by default** and says so. Someone who needs one usually
+wants the other, and two separate flows at the moment somebody is upset is how
+people end up doing neither. Reports are kept after review: one dismissed
+report means little, four from unrelated people is the pattern.
+
+### Rate limits
+
+**Address-keyed limits must stay loose, and this is the reason.** A university
+is a handful of public addresses in front of thousands of students. Any
+per-address limit tight enough to be a real brute-force defence locks out
+everyone on campus wifi during the launch rush — the worst moment, and almost
+undiagnosable from outside (everyone on wifi refused, everyone on mobile data
+fine). So the tight limit is keyed on the **account**, where the attack is
+actually aimed; per-address is set only to catch one machine spraying.
+
+**`ratelimit.consume` commits, and must be the first write in a handler.** A
+counter rolled back with the request it was counting does nothing on the path
+that matters — failed logins are the whole brute-force case, and a failed
+login rolls back. It warns if the session already has pending changes.
+
+**Sliding window, honestly.** It turns "a whole fresh allowance at the
+boundary" into "about one more request", not into nothing. The estimate
+assumes the previous window's uses were spread evenly, so a burst packed into
+its last moment is slightly under-counted. Documented and tested as that.
+
 ### Identity model
 
 Three separate fields, and the separation is load-bearing:
@@ -432,20 +475,28 @@ Each of these cost real debugging time. Do not reintroduce them.
 ## What's left
 
 ### Phase 05 — Trust & safety
+
+Done: **block / report** (`backend/safety.py`) and **rate limits**
+(`backend/ratelimit.py`), both with the reasoning recorded above.
+
+Still open:
 - Real image moderation (nudity, minors, faces) + human review queue. The face
-  gate today only checks "exactly one clear face".
-- Block / report on every surface; rate limits.
+  gate today only checks "exactly one clear face". `Report` rows exist and are
+  queryable by `(status, created_at)`, but **there is no reviewer UI** — a
+  report today goes into a table nobody opens.
 - **Biometric consent** — ArcFace vectors are biometric identifiers under
   India's DPDP Act. Needs explicit, specific consent at upload, deletion that
   actually removes vectors, and a documented purpose.
 - Account deletion reaching Postgres + vectors + object storage — now also
-  `affinities`, `connections`, `chat_messages` and `viewer_preferences`.
+  `affinities`, `connections`, `chat_messages`, `viewer_preferences`, `blocks`
+  and `reports` (a report must outlive its reporter; `reporter_id` is already
+  `SET NULL` for that reason).
 - Redis for chat fanout and presence. The chat socket exists
   (`backend/signaling.py`) but is per-process and the frontend does not use it
   yet — the thread view polls on open instead.
-- Rate-limit `POST /api/connections/requests` specifically. The one-message
-  rule caps messages per *connection*; nothing yet caps how many people a
-  viewer opens at once.
+- **No block/report UI.** The endpoints exist and are tested; nothing on any
+  screen calls them yet, which means the safety features are currently
+  unreachable by an actual user.
 
 ### Phase 06 — Design system
 - Art-directed landing page. Everything else now shares the sky and the motion

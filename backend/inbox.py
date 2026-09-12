@@ -18,6 +18,7 @@ from backend import connections
 from backend.auth import current_user
 from backend.database import User, get_db
 from backend.logging_config import get_logger
+from backend.ratelimit import SEND_REQUEST, consume
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/api/connections", tags=["connections"])
@@ -47,6 +48,9 @@ async def create_request(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
+    # Before the work, not after: a refused request should not have created
+    # a connection row on its way to being refused.
+    await consume(db, SEND_REQUEST, user.id)
     connection, message = await connections.send_request(
         db, sender=user, recipient_id=body.subject_id, text=body.text
     )

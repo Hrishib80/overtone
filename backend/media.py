@@ -31,6 +31,7 @@ from backend.database import (
 )
 from backend.errors import AppError, NotFound
 from backend.logging_config import get_logger
+from backend.ratelimit import UPLOAD_TICKET, consume
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/api/media", tags=["media"])
@@ -64,6 +65,9 @@ async def create_upload_url(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
+    # Issuing a signed URL is the cheap half of an upload and the half an
+    # abuser would spam; the bytes cost them nothing if they never PUT them.
+    await consume(db, UPLOAD_TICKET, user.id)
     allowed, max_bytes = _limit_for(req.kind)
 
     if req.content_type not in allowed:
