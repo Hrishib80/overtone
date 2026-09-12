@@ -1,18 +1,18 @@
-"""the pair loop: ratings and pairings
+"""phase 04: the unlock
 
-Revision ID: 9ef12d32ec5a
+Revision ID: 51ce5a265293
 Revises: 
-Create Date: 2026-09-12 15:10:05.651898
+Create Date: 2026-09-12 18:14:59.454928
 
 """
 from typing import Sequence, Union
 
-import pgvector.sqlalchemy
-import sqlalchemy as sa
 from alembic import op
+import sqlalchemy as sa
+import pgvector.sqlalchemy
 
 # revision identifiers, used by Alembic.
-revision: str = '9ef12d32ec5a'
+revision: str = '51ce5a265293'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -132,6 +132,27 @@ def upgrade() -> None:
         batch_op.create_index(batch_op.f('ix_users_email'), ['email'], unique=True)
         batch_op.create_index(batch_op.f('ix_users_scope_id'), ['scope_id'], unique=False)
         batch_op.create_index('ix_users_scope_segment_status', ['scope_id', 'cap_segment', 'status'], unique=False)
+
+    op.create_table('affinities',
+    sa.Column('id', sa.String(), nullable=False),
+    sa.Column('viewer_id', sa.String(), nullable=False),
+    sa.Column('subject_id', sa.String(), nullable=False),
+    sa.Column('shown', sa.Integer(), nullable=False),
+    sa.Column('picked', sa.Integer(), nullable=False),
+    sa.Column('state', sa.String(), nullable=False),
+    sa.Column('confidence_low', sa.Float(), nullable=False),
+    sa.Column('confidence_high', sa.Float(), nullable=False),
+    sa.Column('unlocked_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('last_decided_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['subject_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['viewer_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('viewer_id', 'subject_id', name='uq_affinity_viewer_subject')
+    )
+    with op.batch_alter_table('affinities', schema=None) as batch_op:
+        batch_op.create_index('ix_affinities_subject', ['subject_id'], unique=False)
+        batch_op.create_index('ix_affinities_viewer_state', ['viewer_id', 'state'], unique=False)
 
     op.create_table('email_verifications',
     sa.Column('id', sa.String(), nullable=False),
@@ -394,6 +415,11 @@ def downgrade() -> None:
         batch_op.drop_index(batch_op.f('ix_email_verifications_token_hash'))
 
     op.drop_table('email_verifications')
+    with op.batch_alter_table('affinities', schema=None) as batch_op:
+        batch_op.drop_index('ix_affinities_viewer_state')
+        batch_op.drop_index('ix_affinities_subject')
+
+    op.drop_table('affinities')
     with op.batch_alter_table('users', schema=None) as batch_op:
         batch_op.drop_index('ix_users_scope_segment_status')
         batch_op.drop_index(batch_op.f('ix_users_scope_id'))

@@ -41,7 +41,8 @@ from backend.pairing import (
     ROUND_TWO_JITTER,
     ROUND_TWO_MIN_DELAY,
     Candidate,
-    _pick_partner,  # testing the selection core directly, by design — see module docstring
+    _pick_anchor,  # testing the selection core directly, by design — see module docstring
+    _pick_partner,
     anchor_weight,
     blended_similarity,
     cosine_similarity,
@@ -1130,3 +1131,136 @@ async def test_expire_stale_round_two_only_touches_pending_rows_past_the_window(
     assert stale.status == PairStatus.expired
     assert fresh.status == PairStatus.pending
     assert already_decided.status == PairStatus.decided
+
+
+# ---------------------------------------------------------------------------
+# Deliberate re-exposure: testing a hypothesis rather than browsing.
+# ---------------------------------------------------------------------------
+
+
+class _ScriptedRng:
+    """Enough of `random.Random` for selection, with the coin flip pinned.
+
+    `_pick_anchor` branches on a single `random()` draw, so a scripted value
+    is the difference between testing re-exposure and testing luck.
+    """
+
+    def __init__(self, coin: float):
+        self.coin = coin
+
+    def random(self) -> float:
+        return self.coin
+
+    def choice(self, seq):
+        return seq[0]
+
+    def choices(self, population, weights=None, k=1):
+        return [population[0]]
+
+
+def test_pick_partner_skips_a_pair_already_shown():
+    """The next-best partner, not a dead end — the anchor is the point."""
+    anchor = _candidate("anchor", [1.0, 0.0])
+    nearest = _candidate("nearest", [0.99, 0.01])
+    further = _candidate("further", [0.9, 0.1])
+    pool = [anchor, nearest, further]
+
+    assert _pick_partner(anchor, pool).user_id == "nearest"
+    seen = {pair_key("anchor", "nearest")}
+    assert _pick_partner(anchor, pool, seen).user_id == "further"
+
+
+def test_pick_partner_is_none_when_every_partner_is_exhausted():
+    anchor = _candidate("anchor", [1.0, 0.0])
+    other = _candidate("other", [0.9, 0.1])
+    seen = {pair_key("anchor", "other")}
+    assert _pick_partner(anchor, [anchor, other], seen) is None
+
+
+def test_the_band_is_sized_on_the_pool_not_on_what_is_left():
+    """Otherwise a viewer deep into their queue would see the band tighten
+    under them — resemblance is a property of the population, not of how much
+    of it one person has already worked through."""
+    faces = [[1.0, i * 0.001] for i in range(150)]
+    pool = [_candidate(f"c{i}", face) for i, face in enumerate(faces)]
+    anchor = pool[0]
+
+    # 150 candidates puts the band at 0.20. Hide all but a handful: if the
+    # percentile were re-read off the survivors it would jump to 1.0 and the
+    # furthest-away candidate would become eligible.
+    keep = {"c1", "c2", "c149"}
+    seen = {pair_key(anchor.user_id, c.user_id) for c in pool[1:] if c.user_id not in keep}
+
+    assert _pick_partner(anchor, pool, seen).user_id in {"c1", "c2"}
+
+
+def test_an_open_question_is_re_anchored_when_the_coin_says_so():
+    pool = [_candidate("a", [1.0, 0.0]), _candidate("b", [0.9, 0.1]), _candidate("c", [0.1, 1.0])]
+    anchor = _pick_anchor(pool, _ScriptedRng(coin=0.0), focus={"c"})
+    assert anchor.user_id == "c"
+
+
+def test_the_other_half_of_the_time_the_usual_weighting_applies():
+    """Re-exposure must not become the only way anyone is ever shown — an
+    anchor that is never re-drawn is also never disproved."""
+    pool = [_candidate("a", [1.0, 0.0]), _candidate("b", [0.9, 0.1]), _candidate("c", [0.1, 1.0])]
+    anchor = _pick_anchor(pool, _ScriptedRng(coin=0.99), focus={"c"})
+    assert anchor.user_id == "a"  # the scripted weighted draw, not the focus
+
+
+def test_a_focus_on_somebody_ineligible_falls_through_rather_than_failing():
+    """An open question can leave the pool between pairs — they deactivate,
+    change who they are visible to, or are simply not in this segment."""
+    pool = [_candidate("a", [1.0, 0.0]), _candidate("b", [0.9, 0.1])]
+    anchor = _pick_anchor(pool, _ScriptedRng(coin=0.0), focus={"gone"})
+    assert anchor.user_id == "a"
+
+
+@pytest.mark.asyncio
+async def test_generate_one_pair_re_anchors_on_a_picked_subject(db_sessionmaker, scope):
+    """End to end: a pick becomes a hypothesis, and the next pair tests it.
+
+    Without this the unlock is theoretical — seven comparisons of one specific
+    person, arrived at by chance out of a whole campus, does not happen.
+    """
+    viewer_id = await _seed_user(
+        db_sessionmaker,
+        scope_id=scope.id,
+        email="v@campus.edu",
+        visible_as=["woman"],
+        interested_in=["man"],
+        face=[1.0, 0.0],
+    )
+    subjects = [
+        await _seed_user(
+            db_sessionmaker,
+            scope_id=scope.id,
+            email=f"c{i}@campus.edu",
+            visible_as=["man"],
+            interested_in=["woman"],
+            face=[1.0 - i * 0.01, i * 0.01],
+        )
+        for i in range(5)
+    ]
+
+    async with db_sessionmaker() as db:
+        viewer = await db.get(User, viewer_id)
+        first = await generate_one_pair(db, viewer, rng=random.Random(5))
+        assert first is not None
+        first.status = PairStatus.shown
+        await db.flush()
+        chosen = first.subject_a_id
+        await record_decision(db, viewer, first.id, chosen)
+        await db.commit()
+
+    async with db_sessionmaker() as db:
+        viewer = await db.get(User, viewer_id)
+        # Coin pinned to the re-exposure branch: the person just picked has to
+        # be in the next pair, against somebody new.
+        second = await generate_one_pair(db, viewer, rng=_ScriptedRng(coin=0.0))
+        await db.commit()
+
+    assert second is not None
+    assert chosen in (second.subject_a_id, second.subject_b_id)
+    assert second.pair_key != first.pair_key
+    assert set(subjects) >= {second.subject_a_id, second.subject_b_id}

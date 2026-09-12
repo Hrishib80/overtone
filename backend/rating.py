@@ -191,21 +191,34 @@ def update(subject: Rating, comparisons: list[Comparison], *, tau: float = TAU) 
     )
 
 
-def wilson_lower_bound(picked: int, shown: int, z: float = 1.645) -> float:
-    """Lower bound of a Wilson score interval.
+def wilson_interval(picked: int, shown: int, z: float = 1.645) -> tuple[float, float]:
+    """Both ends of a Wilson score interval over a pick rate.
 
-    Raw pick rates are useless at the sample sizes this system actually sees —
-    two out of two is 100% and means nothing. This asks the honest question
-    instead: what rate can we be confident is *at least* true?
+    Raw rates are useless at the sample sizes this system actually sees — two
+    out of two is 100% and means nothing. This asks the honest question
+    instead: what range of true rates is consistent with what we have seen?
+
+    Both ends earn their keep. The lower bound *opens* a question — a
+    preference is only acted on once we are confident it is at least strong.
+    The upper bound *closes* one: when even the optimistic end sits below the
+    threshold, further comparisons would only be spent confirming a no, and
+    the system should stop spending them.
 
     Default z is 90% confidence rather than 95%, because at launch volumes the
     stricter bound is unreachable for almost everyone.
     """
     if shown <= 0:
-        return 0.0
+        # No evidence constrains nothing — the honest interval is the whole
+        # range, which reads as neither unlocked nor settled downstream.
+        return (0.0, 1.0)
 
     p = picked / shown
     z_sq = z * z
     centre = (p + z_sq / (2 * shown)) / (1 + z_sq / shown)
     margin = (z / (1 + z_sq / shown)) * math.sqrt(p * (1 - p) / shown + z_sq / (4 * shown * shown))
-    return max(0.0, centre - margin)
+    return (max(0.0, centre - margin), min(1.0, centre + margin))
+
+
+def wilson_lower_bound(picked: int, shown: int, z: float = 1.645) -> float:
+    """The lower end alone. See `wilson_interval`."""
+    return wilson_interval(picked, shown, z)[0]

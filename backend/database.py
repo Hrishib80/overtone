@@ -630,3 +630,61 @@ class Pairing(Base):
 def pair_key(subject_a_id: str, subject_b_id: str) -> str:
     """Canonical unordered key for two subjects, order-independent."""
     return "|".join(sorted((subject_a_id, subject_b_id)))
+
+
+# --------------------------------------------------------------------------
+# What one viewer has demonstrated about one other person
+# --------------------------------------------------------------------------
+
+
+class AffinityState(enum.StrEnum):
+    learning = "learning"  # the interval still straddles the threshold
+    unlocked = "unlocked"  # confidently above it — the profile is revealed
+    settled = "settled"  # confidently below it, or out of patience
+
+
+class Affinity(Base):
+    """One viewer's running record of one subject: shown, picked, and what
+    that adds up to.
+
+    Denormalised from `pairings` deliberately. The counts are derivable — the
+    pairing rows are never deleted — but the unlock test runs on every single
+    decision and needs the totals for exactly two people out of a viewer's
+    entire history, which is the shape a denormalised row is for.
+
+    It is also where `unlocked_at` lives, and that is not derivable at all.
+    An unlock is an *event*: it grants a person something, and later evidence
+    that would no longer clear the bar must not silently take it back.
+
+    Unlike `Rating`, this is not keyed by segment. A rating describes how a
+    population sees someone, so it has to be per-audience. This describes what
+    one person thinks of one other person, which does not change because the
+    pair happened to be drawn under a different segment.
+    """
+
+    __tablename__ = "affinities"
+    __table_args__ = (
+        UniqueConstraint("viewer_id", "subject_id", name="uq_affinity_viewer_subject"),
+        Index("ix_affinities_viewer_state", "viewer_id", "state"),
+        Index("ix_affinities_subject", "subject_id"),
+    )
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    viewer_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    subject_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    # Decided appearances only. A pair that was served and never answered, or
+    # one that expired unshown, is not evidence about anything.
+    shown = Column(Integer, nullable=False, default=0)
+    picked = Column(Integer, nullable=False, default=0)
+
+    state = Column(String, nullable=False, default=AffinityState.learning)
+    # The Wilson bounds as of the last decision. Stored for ordering and for
+    # answering "why did this unlock?" later — never shown to anyone, under
+    # the same rule that keeps ratings private.
+    confidence_low = Column(Float, nullable=False, default=0.0)
+    confidence_high = Column(Float, nullable=False, default=1.0)
+
+    unlocked_at = Column(UTCDateTime(), nullable=True)
+    last_decided_at = Column(UTCDateTime(), nullable=True)
+    created_at = Column(UTCDateTime(), nullable=False, default=utcnow)

@@ -176,11 +176,22 @@ async def decide_pair(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    pairing = await record_decision(db, user, pairing_id, req.chosen_id)
+    decision = await record_decision(db, user, pairing_id, req.chosen_id)
+
+    # Built before the commit, deliberately: this is the one response that
+    # will ever carry the unlock, so it is worth resolving inside the same
+    # transaction that created it rather than risking an expired row.
+    unlocked = (
+        await _full_profile_view(db, decision.unlocked.subject_id) if decision.unlocked is not None else None
+    )
     await db.commit()
 
     return {
         "status": "decided",
-        "round": pairing.round,
-        "round_two_scheduled": pairing.round == PairRound.round_1,
+        "round": decision.pairing.round,
+        "round_two_scheduled": decision.pairing.round == PairRound.round_1,
+        # Present exactly once, on the choice that earned it. Never a count,
+        # never a score — the viewer learns that someone opened up, not how
+        # close anybody else is to opening up.
+        "unlocked": unlocked,
     }

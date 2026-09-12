@@ -21,7 +21,10 @@ from datetime import timedelta
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.affinity import apply_decision as apply_affinity
+from backend.affinity import open_question_subject_ids
 from backend.database import (
+    Affinity,
     Pairing,
     PairRound,
     PairStatus,
@@ -67,6 +70,20 @@ ROUND_TWO_EXPIRY = timedelta(days=7)
 # matters for the eventual pgvector ANN version; kept here as the documented
 # knob for that day.
 CANDIDATE_OVERFETCH = 200
+
+# How often a pair is built around someone this viewer has already picked and
+# not yet resolved, rather than around a fresh weighted draw.
+#
+# This is not a recommendation feature, it is what makes the unlock reachable
+# at all. Clearing the Wilson bound takes at least seven comparisons of one
+# specific person; out of a pool of hundreds, chance alone will essentially
+# never deliver those. So a pick is treated as a hypothesis and tested: the
+# same person, a new similar opponent, does the answer hold?
+#
+# Half, and not more, because the other half is what keeps the pool from
+# collapsing to whoever the viewer liked first — and an anchor that is never
+# re-drawn is also never disproved.
+RE_EXPOSURE_RATE = 0.5
 
 
 def schedule_round_two_due_at(now=None, rng: random.Random | None = None):
@@ -232,7 +249,30 @@ async def _seen_pair_keys(db: AsyncSession, viewer_id: str, round_: str) -> set[
     return set(rows)
 
 
-def _pick_anchor(candidates: list[Candidate], rng: random.Random) -> Candidate:
+def _pick_anchor(
+    candidates: list[Candidate],
+    rng: random.Random,
+    focus: set[str] | None = None,
+) -> Candidate:
+    """Choose who the pair is built around.
+
+    `focus` holds this viewer's live hypotheses — people they have picked
+    before and whose record has not yet resolved either way. Some of the time
+    the anchor is drawn from there, which is what turns a scattering of
+    unrelated picks into evidence about one person.
+
+    Otherwise the draw is weighted toward wide deviation and low exposure, so
+    the system keeps learning about people it knows least rather than
+    circling the same well-measured faces.
+    """
+    if focus and rng.random() < RE_EXPOSURE_RATE:
+        live = [c for c in candidates if c.user_id in focus]
+        if live:
+            # Uniform within the hypothesis set: these are all questions worth
+            # answering, and deviation says nothing useful about which one
+            # this viewer should be asked next.
+            return rng.choice(live)
+
     # Weighted sampling for pair variety, not a security decision — the
     # default `random` module is the right tool here.
     weights = [anchor_weight(c.rating.deviation, c.exposure) for c in candidates]
@@ -241,10 +281,20 @@ def _pick_anchor(candidates: list[Candidate], rng: random.Random) -> Candidate:
     return rng.choices(candidates, weights=weights, k=1)[0]
 
 
-def _pick_partner(anchor: Candidate, pool: list[Candidate]) -> Candidate | None:
+def _pick_partner(anchor: Candidate, pool: list[Candidate], seen: set[str] | None = None) -> Candidate | None:
     """The core of §04: narrow to visually-near AND rating-comparable, then
-    rank survivors by the full blended similarity."""
+    rank survivors by the full blended similarity.
+
+    `seen` excludes partners that would rebuild a pair this viewer has already
+    been shown. Filtering here rather than in the caller is what makes
+    re-exposure possible: selection is deterministic given an anchor, so a
+    caller that could only reject the finished pair and retry would get the
+    same partner back every time and have to abandon the anchor entirely —
+    exactly the anchor it was trying to ask about again.
+    """
     others = [c for c in pool if c.user_id != anchor.user_id]
+    if seen is not None:
+        others = [c for c in others if pair_key(anchor.user_id, c.user_id) not in seen]
     if not others:
         return None
 
@@ -256,7 +306,11 @@ def _pick_partner(anchor: Candidate, pool: list[Candidate]) -> Candidate | None:
     distances = sorted(
         ((1.0 - cosine_similarity(anchor.face, c.face), c) for c in others), key=lambda item: item[0]
     )
-    percentile = visual_band_percentile(len(others) + 1)
+    # Sized on the whole eligible pool, not on what survived the `seen`
+    # filter: the band expresses how alike two people have to look, which is a
+    # property of the population, not of how much of it this viewer has
+    # already worked through.
+    percentile = visual_band_percentile(len(pool))
     band_edge_index = max(0, math.ceil(percentile * (len(distances) - 1)))
     band_edge_distance = distances[band_edge_index][0]
     visually_near = [c for d, c in distances if d <= band_edge_distance]
@@ -297,18 +351,17 @@ async def generate_one_pair(
         return None
 
     seen = await _seen_pair_keys(db, viewer.id, PairRound.round_1)
+    focus = set(await open_question_subject_ids(db, viewer.id))
 
-    # A handful of anchor attempts, in case the first draw's only eligible
-    # partner turns out to already be a pair this viewer has seen.
+    # A handful of anchor attempts, in case a draw turns out to have no
+    # unseen partner left anywhere in its band.
     for _ in range(min(10, len(candidates))):
-        anchor = _pick_anchor(candidates, rng)
-        partner = _pick_partner(anchor, candidates)
+        anchor = _pick_anchor(candidates, rng, focus)
+        partner = _pick_partner(anchor, candidates, seen)
         if partner is None:
             continue
 
         key = pair_key(anchor.user_id, partner.user_id)
-        if key in seen:
-            continue
 
         next_position = (
             await db.execute(
@@ -413,9 +466,24 @@ async def next_pair(db: AsyncSession, viewer: User, *, rng: random.Random | None
     return pairing
 
 
-async def record_decision(db: AsyncSession, viewer: User, pairing_id: str, chosen_id: str) -> Pairing:
-    """Apply a viewer's choice: update both subjects' ratings, close out the
-    pairing, and — for a round-1 decision — schedule its round-2 return."""
+@dataclass(slots=True)
+class Decision:
+    """What one choice produced.
+
+    `unlocked` is the point of the whole loop: the moment a viewer's picks
+    become confident enough to reveal someone. It is returned rather than left
+    to be re-derived, because the caller has to tell the viewer about it
+    exactly once, on the response to the choice that caused it.
+    """
+
+    pairing: Pairing
+    unlocked: Affinity | None = None
+
+
+async def record_decision(db: AsyncSession, viewer: User, pairing_id: str, chosen_id: str) -> Decision:
+    """Apply a viewer's choice: update both subjects' ratings and this
+    viewer's record of them, close out the pairing, and — for a round-1
+    decision — schedule its round-2 return."""
     pairing = await db.get(Pairing, pairing_id)
     if pairing is None:
         raise NotFound("That pair no longer exists.")
@@ -439,6 +507,8 @@ async def record_decision(db: AsyncSession, viewer: User, pairing_id: str, chose
         weight=weight,
     )
 
+    unlocked = await apply_affinity(db, viewer_id=viewer.id, chosen_id=chosen_id, rejected_id=loser_id)
+
     pairing.status = PairStatus.decided
     pairing.chosen_id = chosen_id
     pairing.decided_at = utcnow()
@@ -458,7 +528,7 @@ async def record_decision(db: AsyncSession, viewer: User, pairing_id: str, chose
             )
         )
 
-    return pairing
+    return Decision(pairing=pairing, unlocked=unlocked)
 
 
 async def expire_stale_round_two(db: AsyncSession) -> int:

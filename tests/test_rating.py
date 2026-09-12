@@ -17,6 +17,7 @@ from backend.rating import (
     decay,
     expected_score,
     update,
+    wilson_interval,
     wilson_lower_bound,
 )
 
@@ -180,3 +181,44 @@ def test_the_bound_is_below_the_raw_rate():
 
 def test_no_observations_is_zero():
     assert wilson_lower_bound(0, 0) == 0.0
+
+
+# ---- Wilson interval ------------------------------------------------------
+
+
+def test_the_interval_brackets_the_lower_bound():
+    """`wilson_lower_bound` is the same computation, so they must not drift."""
+    for picked, shown in [(0, 0), (1, 1), (7, 10), (90, 100)]:
+        assert wilson_interval(picked, shown)[0] == wilson_lower_bound(picked, shown)
+
+
+def test_no_observations_constrains_nothing():
+    """Not (0, 0): with nothing observed, every rate is still consistent, and
+    a zero upper bound would read downstream as a confident 'no'."""
+    assert wilson_interval(0, 0) == (0.0, 1.0)
+
+
+def test_the_interval_narrows_as_evidence_arrives():
+    widths = [wilson_interval(n // 2, n)[1] - wilson_interval(n // 2, n)[0] for n in (4, 20, 100, 500)]
+    assert widths == sorted(widths, reverse=True)
+
+
+def test_the_upper_bound_falls_below_a_strong_claim_once_a_record_is_poor():
+    """What retires a question: even the optimistic reading is under the bar."""
+    assert wilson_interval(1, 6)[1] < 0.70
+    assert wilson_interval(5, 6)[1] > 0.70
+
+
+def test_both_ends_stay_inside_zero_and_one():
+    for picked, shown in [(0, 1), (1, 1), (0, 50), (50, 50), (3, 7)]:
+        low, high = wilson_interval(picked, shown)
+        assert 0.0 <= low <= high <= 1.0
+
+
+def test_a_higher_confidence_level_widens_the_interval():
+    """z is the dial phase 07 tunes; raising it must cost evidence, not
+    silently change which direction the bound moves."""
+    ninety = wilson_interval(8, 10, z=1.645)
+    ninety_five = wilson_interval(8, 10, z=1.96)
+    assert ninety_five[0] < ninety[0]
+    assert ninety_five[1] > ninety[1]

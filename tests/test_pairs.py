@@ -7,12 +7,14 @@ shape, and the one rule the module docstring is emphatic about: round 1 must
 never leak anything beyond a photo.
 """
 
+import json
 from datetime import timedelta
 
 import pytest
 from sqlalchemy import select
 
-from backend.database import MediaAsset, MediaStatus, Pairing, PairRound, pair_key, utcnow
+from backend.affinity import apply_decision, is_unlocked
+from backend.database import MediaAsset, MediaStatus, Pairing, PairRound, User, pair_key, utcnow
 from tests.conftest import CAMPUS_DOMAIN, onboard, run_jobs
 
 
@@ -282,3 +284,112 @@ async def test_pair_key_prevents_repeating_the_same_pair(client, db_sessionmaker
             .all()
         )
     assert pair_key(*subject_ids) in seen
+
+
+# ---------------------------------------------------------------------------
+# The unlock, over HTTP.
+# ---------------------------------------------------------------------------
+
+
+async def _user_id(db_sessionmaker, email):
+    async with db_sessionmaker() as db:
+        return (await db.execute(select(User).where(User.email == email))).scalar_one().id
+
+
+async def _prime_affinity(db_sessionmaker, viewer_id, chosen_id, rejected_id, times):
+    """Put a viewer most of the way to an unlock without seven real pairs.
+
+    The test scope caps each segment at two people, so there is exactly one
+    pair that can ever be built here and it may only be shown once per round.
+    Driving the record directly is the honest way to reach the boundary; the
+    decision that actually crosses it still goes through the API.
+    """
+    for _ in range(times):
+        async with db_sessionmaker() as db:
+            await apply_decision(db, viewer_id=viewer_id, chosen_id=chosen_id, rejected_id=rejected_id)
+            await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_an_ordinary_decision_unlocks_nothing(client, db_sessionmaker, fake_storage):
+    _a, _b, viewer = await _two_mutual_users(client, db_sessionmaker, fake_storage)
+    pair = (await client.get("/api/pairs/next", headers=viewer["headers"])).json()["pair"]
+
+    response = await client.post(
+        f"/api/pairs/{pair['id']}/decide",
+        headers=viewer["headers"],
+        json={"chosen_id": pair["subjects"][0]["id"]},
+    )
+    assert response.status_code == 200
+    assert response.json()["unlocked"] is None
+
+
+@pytest.mark.asyncio
+async def test_the_deciding_choice_returns_the_full_profile(client, db_sessionmaker, fake_storage):
+    _a, _b, viewer = await _two_mutual_users(client, db_sessionmaker, fake_storage)
+    viewer_id = await _user_id(db_sessionmaker, f"pv@{CAMPUS_DOMAIN}")
+
+    pair = (await client.get("/api/pairs/next", headers=viewer["headers"])).json()["pair"]
+    chosen, rejected = (s["id"] for s in pair["subjects"])
+    await _prime_affinity(db_sessionmaker, viewer_id, chosen, rejected, times=6)
+
+    body = (
+        await client.post(
+            f"/api/pairs/{pair['id']}/decide",
+            headers=viewer["headers"],
+            json={"chosen_id": chosen},
+        )
+    ).json()
+
+    unlocked = body["unlocked"]
+    assert unlocked is not None
+    assert unlocked["id"] == chosen
+    # A reveal, not a notification: everything round 2 would have shown.
+    assert unlocked["display_name"]
+    assert unlocked["age"]
+    assert unlocked["photos"]
+    assert unlocked["prompts"]
+
+
+@pytest.mark.asyncio
+async def test_an_unlock_never_carries_a_rating_or_an_address(client, db_sessionmaker, fake_storage):
+    """The line the whole design rests on: a viewer learns that someone opened
+    up, never how anyone is scored, and never anything private."""
+    _a, _b, viewer = await _two_mutual_users(client, db_sessionmaker, fake_storage)
+    viewer_id = await _user_id(db_sessionmaker, f"pv@{CAMPUS_DOMAIN}")
+
+    pair = (await client.get("/api/pairs/next", headers=viewer["headers"])).json()["pair"]
+    chosen, rejected = (s["id"] for s in pair["subjects"])
+    await _prime_affinity(db_sessionmaker, viewer_id, chosen, rejected, times=6)
+
+    body = (
+        await client.post(
+            f"/api/pairs/{pair['id']}/decide",
+            headers=viewer["headers"],
+            json={"chosen_id": chosen},
+        )
+    ).json()
+
+    serialised = json.dumps(body)
+    for forbidden in ("rating", "deviation", "confidence", "picked", "shown", "@", "birthdate", "password"):
+        assert forbidden not in serialised, forbidden
+
+
+@pytest.mark.asyncio
+async def test_the_person_passed_over_is_not_unlocked(client, db_sessionmaker, fake_storage):
+    _a, _b, viewer = await _two_mutual_users(client, db_sessionmaker, fake_storage)
+    viewer_id = await _user_id(db_sessionmaker, f"pv@{CAMPUS_DOMAIN}")
+
+    pair = (await client.get("/api/pairs/next", headers=viewer["headers"])).json()["pair"]
+    chosen, rejected = (s["id"] for s in pair["subjects"])
+    await _prime_affinity(db_sessionmaker, viewer_id, chosen, rejected, times=6)
+
+    await client.post(
+        f"/api/pairs/{pair['id']}/decide",
+        headers=viewer["headers"],
+        json={"chosen_id": chosen},
+    )
+
+    async with db_sessionmaker() as db:
+        assert await is_unlocked(db, viewer_id, chosen) is True
+        assert await is_unlocked(db, viewer_id, rejected) is False
