@@ -1,8 +1,8 @@
-"""initial schema
+"""the pair loop: ratings and pairings
 
-Revision ID: 0951826041e5
+Revision ID: 9ef12d32ec5a
 Revises: 
-Create Date: 2026-09-12 14:16:08.422906
+Create Date: 2026-09-12 15:10:05.651898
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = '0951826041e5'
+revision: str = '9ef12d32ec5a'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -185,6 +185,34 @@ def upgrade() -> None:
         batch_op.create_index(batch_op.f('ix_media_assets_user_id'), ['user_id'], unique=False)
         batch_op.create_index('ix_media_user_kind', ['user_id', 'kind', 'status'], unique=False)
 
+    op.create_table('pairings',
+    sa.Column('id', sa.String(), nullable=False),
+    sa.Column('viewer_id', sa.String(), nullable=False),
+    sa.Column('subject_a_id', sa.String(), nullable=False),
+    sa.Column('subject_b_id', sa.String(), nullable=False),
+    sa.Column('pair_key', sa.String(), nullable=False),
+    sa.Column('segment', sa.String(), nullable=False),
+    sa.Column('round', sa.String(), nullable=False),
+    sa.Column('status', sa.String(), nullable=False),
+    sa.Column('position', sa.Integer(), nullable=False),
+    sa.Column('due_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('chosen_id', sa.String(), nullable=True),
+    sa.Column('decided_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('shown_at', sa.DateTime(timezone=True), nullable=True),
+    sa.ForeignKeyConstraint(['chosen_id'], ['users.id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['subject_a_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['subject_b_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['viewer_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('viewer_id', 'pair_key', 'round', name='uq_pairing_viewer_pair_round')
+    )
+    with op.batch_alter_table('pairings', schema=None) as batch_op:
+        batch_op.create_index('ix_pairings_due', ['status', 'round', 'due_at'], unique=False)
+        batch_op.create_index('ix_pairings_serve', ['viewer_id', 'status', 'round', 'position'], unique=False)
+        batch_op.create_index('ix_pairings_subject_a', ['subject_a_id'], unique=False)
+        batch_op.create_index('ix_pairings_subject_b', ['subject_b_id'], unique=False)
+
     op.create_table('profiles',
     sa.Column('user_id', sa.String(), nullable=False),
     sa.Column('gender_identity_id', sa.String(), nullable=True),
@@ -239,6 +267,23 @@ def upgrade() -> None:
     )
     with op.batch_alter_table('prompt_responses', schema=None) as batch_op:
         batch_op.create_index('ix_prompt_responses_user', ['user_id'], unique=False)
+
+    op.create_table('ratings',
+    sa.Column('id', sa.String(), nullable=False),
+    sa.Column('subject_id', sa.String(), nullable=False),
+    sa.Column('audience_segment', sa.String(), nullable=False),
+    sa.Column('kind', sa.String(), nullable=False),
+    sa.Column('rating', sa.Float(), nullable=False),
+    sa.Column('deviation', sa.Float(), nullable=False),
+    sa.Column('volatility', sa.Float(), nullable=False),
+    sa.Column('comparison_count', sa.Integer(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['subject_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('subject_id', 'audience_segment', 'kind', name='uq_rating_subject_segment_kind')
+    )
+    with op.batch_alter_table('ratings', schema=None) as batch_op:
+        batch_op.create_index('ix_ratings_subject', ['subject_id'], unique=False)
 
     op.create_table('user_interested_in',
     sa.Column('user_id', sa.String(), nullable=False),
@@ -318,11 +363,22 @@ def downgrade() -> None:
     op.drop_table('waitlist_entries')
     op.drop_table('user_visible_as')
     op.drop_table('user_interested_in')
+    with op.batch_alter_table('ratings', schema=None) as batch_op:
+        batch_op.drop_index('ix_ratings_subject')
+
+    op.drop_table('ratings')
     with op.batch_alter_table('prompt_responses', schema=None) as batch_op:
         batch_op.drop_index('ix_prompt_responses_user')
 
     op.drop_table('prompt_responses')
     op.drop_table('profiles')
+    with op.batch_alter_table('pairings', schema=None) as batch_op:
+        batch_op.drop_index('ix_pairings_subject_b')
+        batch_op.drop_index('ix_pairings_subject_a')
+        batch_op.drop_index('ix_pairings_serve')
+        batch_op.drop_index('ix_pairings_due')
+
+    op.drop_table('pairings')
     with op.batch_alter_table('media_assets', schema=None) as batch_op:
         batch_op.drop_index('ix_media_user_kind')
         batch_op.drop_index(batch_op.f('ix_media_assets_user_id'))

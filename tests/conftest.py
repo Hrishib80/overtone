@@ -176,9 +176,15 @@ async def complete_profile(
     *,
     visible_as: list[str],
     interested_in: list[str],
-    store: dict | None = None,
+    store: dict,
 ) -> None:
-    """Fill in everything `submit` requires: identity, intentions, photo, prompts."""
+    """Fill in everything `submit` requires: identity, intentions, photo, prompts.
+
+    The voice prompt's `audio_key` now has to name a real MediaAsset the
+    caller owns — the API verifies that rather than trusting the string — so
+    the recording is uploaded here for real, through the same fake-storage
+    path a photo goes through, rather than a placeholder string.
+    """
     patch = await client.patch(
         "/api/profile",
         headers=headers,
@@ -190,6 +196,9 @@ async def complete_profile(
         },
     )
     assert patch.status_code == 200, patch.text
+
+    await upload_media(client, headers, store)
+    voice_asset_id = await upload_media(client, headers, store, kind="voice", content_type="audio/webm")
 
     prompts = await client.put(
         "/api/profile/prompts",
@@ -203,16 +212,13 @@ async def complete_profile(
                     "prompt_id": "how_to_pronounce_my_name",
                     "slot": 4,
                     "kind": "voice",
-                    "audio_key": "voice/aditi.webm",
+                    "audio_key": voice_asset_id,
                     "audio_duration_ms": 9000,
                 },
             ]
         },
     )
     assert prompts.status_code == 200, prompts.text
-
-    if store is not None:
-        await upload_media(client, headers, store)
 
 
 @pytest_asyncio.fixture

@@ -4,7 +4,6 @@ Option-set fields (dating intentions, vices, religion …) are plain strings
 validated in the API layer against `backend.options`, not database enums — a
 native enum needs a migration to add one value, and this vocabulary will grow.
 
-The pairwise tables (rating, pair_queue, pair_impression …) arrive in phase 03.
 Schema is owned by Alembic, never by `create_all`.
 """
 
@@ -526,3 +525,108 @@ class ChatMessage(Base):
     message_text = Column(Text)
     status = Column(String, nullable=False, default=ChatStatus.sent)
     created_at = Column(UTCDateTime(), default=utcnow, nullable=False)
+
+
+# --------------------------------------------------------------------------
+# The pair loop
+# --------------------------------------------------------------------------
+
+
+class RatingKind(enum.StrEnum):
+    visual = "visual"  # from the photo-only round
+    profile = "profile"  # from the full-profile round
+
+
+class Rating(Base):
+    """Glicko-2 state for one subject, within one audience.
+
+    `audience_segment` is the `interested_in` segment of the viewers who
+    produced the comparisons behind this rating — not the subject's own
+    identity. A subject visible_as both "woman" and "nonbinary" carries two
+    independent visual ratings, one per population that can be shown them,
+    because a rating only means something within the population that judged
+    it: averaging across audiences would describe neither.
+
+    Rows are created lazily, on first use, with Glicko-2's own defaults
+    (1500 / 350 / 0.06) rather than backfilled — a person who has never been
+    shown to a given audience has no rating there yet, which is simply true.
+    """
+
+    __tablename__ = "ratings"
+    __table_args__ = (
+        UniqueConstraint("subject_id", "audience_segment", "kind", name="uq_rating_subject_segment_kind"),
+        Index("ix_ratings_subject", "subject_id"),
+    )
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    subject_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    audience_segment = Column(String, nullable=False)
+    kind = Column(String, nullable=False)
+
+    rating = Column(Float, nullable=False, default=1500.0)
+    deviation = Column(Float, nullable=False, default=350.0)
+    volatility = Column(Float, nullable=False, default=0.06)
+    comparison_count = Column(Integer, nullable=False, default=0)
+
+    updated_at = Column(UTCDateTime(), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class PairRound(enum.StrEnum):
+    round_1 = "round_1"  # photo only
+    round_2 = "round_2"  # full profile, at least 48h later
+
+
+class PairStatus(enum.StrEnum):
+    pending = "pending"  # queued, not yet served
+    shown = "shown"  # served to the viewer, awaiting their choice
+    decided = "decided"  # the viewer chose
+    expired = "expired"  # a round-2 window passed with the pair never shown
+
+
+class Pairing(Base):
+    """One pairing, for one viewer. Doubles as both the upcoming queue and the
+    permanent record of what was shown and decided — a decided or expired row
+    is never deleted, so this is also the impression history.
+
+    `pair_key` is the unordered key of the two subject ids, which is what the
+    uniqueness constraint below actually enforces: (A, B) and (B, A) are the
+    same pair, and this viewer must never be shown it twice in the same round.
+    """
+
+    __tablename__ = "pairings"
+    __table_args__ = (
+        UniqueConstraint("viewer_id", "pair_key", "round", name="uq_pairing_viewer_pair_round"),
+        Index("ix_pairings_serve", "viewer_id", "status", "round", "position"),
+        Index("ix_pairings_due", "status", "round", "due_at"),
+        Index("ix_pairings_subject_a", "subject_a_id"),
+        Index("ix_pairings_subject_b", "subject_b_id"),
+    )
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    viewer_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    subject_a_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    subject_b_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    pair_key = Column(String, nullable=False)
+    # The interested_in segment this pairing was generated under. Both
+    # subjects were drawn from viewers-interested-in-this-segment at
+    # generation time, and it is what the rating updates key off.
+    segment = Column(String, nullable=False)
+
+    round = Column(String, nullable=False, default=PairRound.round_1)
+    status = Column(String, nullable=False, default=PairStatus.pending)
+    position = Column(Integer, nullable=False, default=0)
+
+    # Round 2 only: the earliest moment this may be served. Set when round 1
+    # is decided; a scheduler (or the serve path) promotes it once due.
+    due_at = Column(UTCDateTime(), nullable=True)
+
+    chosen_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    decided_at = Column(UTCDateTime(), nullable=True)
+
+    created_at = Column(UTCDateTime(), nullable=False, default=utcnow)
+    shown_at = Column(UTCDateTime(), nullable=True)
+
+
+def pair_key(subject_a_id: str, subject_b_id: str) -> str:
+    """Canonical unordered key for two subjects, order-independent."""
+    return "|".join(sorted((subject_a_id, subject_b_id)))

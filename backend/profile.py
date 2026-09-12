@@ -351,6 +351,19 @@ async def set_prompts(
     if voice > options.VOICE_PROMPT_SLOTS:
         raise AppError(f"You can record at most {options.VOICE_PROMPT_SLOTS} voice prompt.")
 
+    # audio_key names a MediaAsset id, not a raw storage key — despite the
+    # field's name, which follows what the client calls it. Nothing checked
+    # that it actually belonged to this caller, so a submitted id could
+    # reference someone else's recording, or nothing at all; later code (the
+    # round-2 profile reveal) trusts this field to resolve a playable clip, so
+    # it has to be verified here rather than there.
+    for answer in payload.answers:
+        if answer.kind != PromptKind.voice:
+            continue
+        asset = await db.get(MediaAsset, answer.audio_key)
+        if asset is None or asset.user_id != user.id or asset.kind != MediaKind.voice:
+            raise AppError("That recording could not be found. Try recording again.")
+
     existing = {
         row.slot: row
         for row in (await db.execute(select(PromptResponse).where(PromptResponse.user_id == user.id)))

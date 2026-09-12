@@ -28,3 +28,5 @@ ignore = [
 "tests/*" = ["S105", "S106"]  # hard-coded test credentials are the point
 "alembic/env.py" = ["E402"]   # imports follow Alembic's required setup order
 "tests/conftest.py" = ["E402"] # env must be set before backend imports
+"backend/pairing.py" = ["S311"] # anchor/segment sampling is algorithmic variety, not security
+"tests/test_pairing.py" = ["S311"] # seeded random.Random for reproducible pair-generation tests

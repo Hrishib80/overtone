@@ -170,6 +170,82 @@ async def test_more_than_three_written_prompts_is_rejected(client, verified, fak
 
 
 @pytest.mark.asyncio
+async def test_voice_prompt_rejects_an_audio_key_that_is_not_a_real_asset(client, verified, fake_storage):
+    response = await client.put(
+        "/api/profile/prompts",
+        headers=verified["headers"],
+        json={
+            "answers": [
+                {
+                    "prompt_id": "guess_the_song",
+                    "slot": 1,
+                    "kind": "voice",
+                    "audio_key": "not-a-real-asset-id",
+                    "audio_duration_ms": 5000,
+                }
+            ]
+        },
+    )
+    assert response.status_code == 400
+    assert "recording" in response.json()["error"]["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_voice_prompt_rejects_someone_elses_asset(client, verified, fake_storage):
+    """audio_key names a MediaAsset id — it must belong to the caller, not
+    just exist."""
+    from tests.conftest import CAMPUS_DOMAIN, register_and_verify, upload_media
+
+    owner = await register_and_verify(client, f"owner@{CAMPUS_DOMAIN}")
+    stolen_asset_id = await upload_media(
+        client, owner["headers"], fake_storage, kind="voice", content_type="audio/webm"
+    )
+
+    response = await client.put(
+        "/api/profile/prompts",
+        headers=verified["headers"],
+        json={
+            "answers": [
+                {
+                    "prompt_id": "guess_the_song",
+                    "slot": 1,
+                    "kind": "voice",
+                    "audio_key": stolen_asset_id,
+                    "audio_duration_ms": 5000,
+                }
+            ]
+        },
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_voice_prompt_rejects_a_photo_asset_used_as_audio(client, verified, fake_storage):
+    """The id has to name a voice asset specifically, not merely something
+    this caller owns."""
+    from tests.conftest import upload_media
+
+    photo_asset_id = await upload_media(client, verified["headers"], fake_storage)  # kind="photo"
+
+    response = await client.put(
+        "/api/profile/prompts",
+        headers=verified["headers"],
+        json={
+            "answers": [
+                {
+                    "prompt_id": "guess_the_song",
+                    "slot": 1,
+                    "kind": "voice",
+                    "audio_key": photo_asset_id,
+                    "audio_duration_ms": 5000,
+                }
+            ]
+        },
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_unknown_prompt_id_is_rejected(client, verified, fake_storage):
     response = await client.put(
         "/api/profile/prompts",
