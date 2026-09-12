@@ -12,11 +12,17 @@ making architectural changes.
 
 ## Current state
 
-Phases 00–03 are complete and committed. **174 tests passing**, lint clean,
-migration round-trips, frontend builds, and the pair loop runs end to end in a
-browser.
+Phases 00–04 are complete and committed. **243 tests passing**, lint clean,
+migration round-trips, frontend builds, and the whole loop — pair, unlock,
+request, reply — has been driven end to end in a browser at phone and laptop
+width.
 
 ```
+97fc571  Phase 04: the unlock and the inbox, on screen
+368ad2c  Phase 04: the online preference model
+9f298fd  Phase 04: message requests, and the end of the swipe-era match model
+607c822  Phase 04: the unlock — affinity, Wilson gates and deliberate re-exposure
+acb6c03  Add CLAUDE.md: project memory across sessions
 1b0e95e  Phase 03: the pair view, plus the periodic sweeps
 8b03b1b  Test the pair API over HTTP; share the job-drain and onboard helpers
 4536e3d  Phase 03: the pair loop — schema, ratings, generation, serve/decide, API
@@ -34,9 +40,11 @@ f895bcc  Baseline: prototype as inherited, before the pairwise rework
 The full design doc lives as a published artifact (v2.1):
 <https://claude.ai/code/artifact/c7c5d44f-7ac7-41e0-9fef-2f4305bfbfdb>
 
-It is the source of truth for the mechanic, the roadmap, and the numbers
-(percentile bands, round weights, population thresholds). Update it when a
-decision in it changes.
+**It now lags the implementation** — it was last written against phase 02, and
+phases 03 and 04 have both shipped since. Where the two disagree, this file and
+the code are right. It is still the best statement of the mechanic and the
+long-range roadmap; it needs a pass to fold in the unlock numbers, the request
+protocol and the preference model.
 
 ---
 
@@ -55,7 +63,7 @@ alembic upgrade head
 python scripts/manage.py seed                     # 81 prompts, 38 genders, 30 sexualities
 python scripts/manage.py scope-create --slug demo --name "Demo University" \
     --domain demo.edu --cap man=600 --cap woman=600
-python scripts/seed_demo.py --scope demo          # 8 fake people, local SVG portraits
+python scripts/seed_demo.py --scope demo          # 16 fake people, local SVG portraits
 
 python -m uvicorn backend.app:app --port 8000     # API
 npx vite --port 5173                              # frontend
@@ -63,9 +71,11 @@ python worker.py                                  # background jobs (optional lo
 ```
 
 Demo accounts: `ravi@demo.edu`, `aditi@demo.edu`, … password `overtone2026`.
+Sixteen people, not eight: an unlock costs seven comparisons of one person and
+a pair may only be shown once, so a smaller pool cannot reach one at all.
 
 ```sh
-pytest                       # 174 tests, no network, no models needed
+pytest                       # 243 tests, no network, no models needed
 ruff check . && ruff format --check .
 alembic check                # fails if models drifted from migrations
 python worker.py --status    # which models this process would use (free, offline)
@@ -121,6 +131,81 @@ Verified against Glickman's own worked example to three decimals
 **Weighted comparisons are a deliberate extension** to the standard algorithm —
 weight scales a comparison's contribution to both the information quantity and
 the rating change, which is how Glickman's derivation naturally expresses it.
+
+### The unlock
+
+**A run of picks becomes evidence, and the Wilson interval decides when.** Each
+decided pair is a Bernoulli trial about one person: shown against a visually
+similar, similarly rated opponent, were they chosen? The pairing controls for
+resemblance and rating, so the null hypothesis is a coin flip and a sustained
+rate above it is a preference.
+
+**Both ends of the interval are used.** The lower bound opens a question at
+**0.70 / 90% confidence**; the upper bound closes one, so a record whose
+optimistic end is already under the bar stops being asked about. There is
+deliberately **no minimum-trials constant** — the interval sets its own floor.
+At these settings:
+
+| Record | Outcome |
+|---|---|
+| 7 straight picks | unlocks — the fastest possible |
+| 6 straight picks | still learning |
+| 12 of 13 | unlocks |
+| even split | settles at 15 |
+| 1 of 6 | settles |
+
+`MAX_TRIALS = 25` is a backstop for a rate that hovers, not the mechanism.
+
+**An unlock is permanent.** Counts keep accruing, but later evidence never
+revokes it. Taking a revealed profile back would be worse than the occasional
+unlock fresh evidence would not repeat.
+
+**The round-2 weight stays out of the interval.** Ratings weight round 2 at
+2.5; the confidence interval counts *trials*, and inflating one to 2.5 would
+make it a claim about a sample size nobody took.
+
+**Deliberate re-exposure is what makes the unlock reachable**, not a
+recommendation feature. Seven comparisons of one specific person, arrived at by
+chance out of a pool of hundreds, does not happen. Half the time
+(`RE_EXPOSURE_RATE`) the anchor is drawn from this viewer's live hypotheses —
+people picked at least once whose record has not resolved. The other half keeps
+the pool from collapsing to whoever they liked first.
+
+### Message requests
+
+**An unlock is one person being certain, which is not two people agreeing.** So
+it buys exactly **one** opening message, into a request inbox. A reply opens
+the chat; until then the sender cannot send again, and the message route is not
+a way around that. Declining is final in both directions.
+
+**A mutual crossing skips the request entirely** — both crossed independently,
+so there is nothing left to ask and the conversation opens with **no
+initiator**, because nobody asked. Resolved in `record_decision`, not in the
+route, so every path that records a decision gets it.
+
+**One `Connection` row per pair, ever**, keyed on the unordered pair and stored
+in the same canonical order the key is built from, so a row and its key cannot
+disagree about who it is between.
+
+### The preference model
+
+**Trained only on round-1 decisions.** The difference between the chosen face
+and the rejected one is unusually clean supervision — the two were selected to
+look alike, so almost everything cancels. A round-2 pick may have been driven
+by a prompt answer or a degree; folding that into a model over *face* vectors
+would attribute it to a face. There is a test pinning this.
+
+**The difference vector is normalised.** Its magnitude says how far apart the
+two faces were, which the pairing already controls for, so the direction is
+what carries information — and the learning rate stops depending on how tight
+the band happened to be.
+
+**The honest tension:** `preference.TILT` lets taste influence *who is shown*,
+and exposure feeds ratings, so a person seen mostly by viewers already inclined
+toward them is judged by a friendlier sample. The tilt is bounded, never
+touches who wins a comparison, and **`TILT = 0` removes it outright** — which
+has its own test, so the escape hatch is real. What the value should be is a
+phase 07 question.
 
 ### Identity model
 
@@ -249,6 +334,22 @@ Each of these cost real debugging time. Do not reintroduce them.
 - **`rm -f` hides failures.** Three SQLite databases got committed because a
   cleanup `rm -f` silently failed against files a running uvicorn still held
   open, and `git add -A` swept them in. Check `git status` before staging.
+  (Stopping uvicorn first is the actual fix — on Windows the delete fails
+  loudly with "Device or resource busy", which is the good case.)
+- **A declined connection has to stay *known*.** Filtering declined rows out of
+  the inbox query entirely made the peer fall back into the "unlocked, go write
+  to them" list — the app would spend the rest of the year suggesting someone
+  write again to a person who said no. Fetch them, then leave them out of every
+  group.
+- **`grid-template-rows: auto 1fr auto` stretches a short conversation.** One
+  message got a 60dvh log and a composer stranded at the bottom of a void. Size
+  by content and cap with `max-height`.
+- **Red is the decline colour.** It is also `.btn`'s default background, so any
+  new positive call-to-action arrives red unless told otherwise. The unlock and
+  the composer are explicitly blue.
+- **Accent fills need `--on-accent`, not `#fff`.** The palette inverts between
+  themes — dark red becomes light red — so hardcoded white heads for
+  white-on-pale in dark mode.
 
 ---
 
@@ -263,25 +364,19 @@ Each of these cost real debugging time. Do not reintroduce them.
 - **Primary photo is the earliest *uploaded* passing photo**, not whichever job
   finished first. The pair view needs one stable photo per person or the rating
   measures photo choice rather than the person.
+- **An unlock creates no connection on its own.** One person being certain is
+  not two people agreeing; the connection appears only when they write, or when
+  the other person crosses too.
+- **An unlocked record whose later evidence falls apart stays unlocked.**
+  Permanence is the rule, not a missed downgrade — the counts underneath are
+  still honest.
+- **A viewer can only ever see a given pair once.** So a segment needs at least
+  eight people before any unlock is reachable, and a viewer who has worked
+  through their pool runs out. Not a bug; a cold-start constraint.
 
 ---
 
 ## What's left
-
-### Phase 04 — Preference & unlock
-- Online preference model trained on decided pairs (the difference vector
-  between chosen and rejected is clean supervised signal).
-- **Wilson lower-bound unlock.** `wilson_lower_bound()` already exists and is
-  tested. At 95% confidence / 0.85 threshold a viewer needs ~25 comparisons of
-  the same person — unreachable at launch volumes. **Start at 90% confidence and
-  ~0.70**, which is still strong given the 0.50 expected rate against
-  similar-rated opponents.
-- Deliberate re-exposure: once a viewer picks someone, preferentially re-pair
-  that person against fresh similar opponents to test the hypothesis.
-- **Message requests** — crossing the threshold sends *one* opening message into
-  a request inbox; a reply opens the chat. Mutual crossing skips the request.
-- `MatchRecord` / `ChatMessage` are swipe-era leftovers still used by
-  `backend/chat.py`; they get reworked here.
 
 ### Phase 05 — Trust & safety
 - Real image moderation (nudity, minors, faces) + human review queue. The face
@@ -290,8 +385,14 @@ Each of these cost real debugging time. Do not reintroduce them.
 - **Biometric consent** — ArcFace vectors are biometric identifiers under
   India's DPDP Act. Needs explicit, specific consent at upload, deletion that
   actually removes vectors, and a documented purpose.
-- Account deletion reaching Postgres + vectors + object storage.
-- Redis for chat fanout and presence.
+- Account deletion reaching Postgres + vectors + object storage — now also
+  `affinities`, `connections`, `chat_messages` and `viewer_preferences`.
+- Redis for chat fanout and presence. The chat socket exists
+  (`backend/signaling.py`) but is per-process and the frontend does not use it
+  yet — the thread view polls on open instead.
+- Rate-limit `POST /api/connections/requests` specifically. The one-message
+  rule caps messages per *connection*; nothing yet caps how many people a
+  viewer opens at once.
 
 ### Phase 06 — Design system
 - Carry the two-pole palette through remaining surfaces.
@@ -300,8 +401,10 @@ Each of these cost real debugging time. Do not reintroduce them.
 ### Phase 07 — Calibration & launch
 - Seed enough profiles that pairs exist — **cold start is the central risk**. A
   swipe app with 50 users is thin; a pair app with 50 users cannot form
-  meaningful pairs at all.
-- Tune round-2 weight, unlock threshold, confidence level on real decisions.
+  meaningful pairs at all, and cannot reach a single unlock.
+- Tune, on real decisions: the round-2 weight (2.5), the unlock threshold
+  (0.70), the confidence level (90%), `RE_EXPOSURE_RATE` (0.5) and
+  `preference.TILT` (0.5). These are the five dials.
 - Load test, runbook, closed beta, campus unlock.
 
 ### Known gaps in what's built
@@ -315,6 +418,14 @@ Each of these cost real debugging time. Do not reintroduce them.
   but business logic isn't exercised against pgvector.
 - Git history contains three committed SQLite blobs (untracked since, but still
   in history). Worth a rewrite before the first push if that matters.
+- **The thread view does not live-update.** It loads on open and after you
+  send; the socket in `backend/signaling.py` is wired and access-checked but
+  the frontend does not connect to it yet. Waits for Redis in phase 05.
+- **No notification of any kind** when a request arrives. The inbox has to be
+  opened. Mail sender first, then this.
+- **`/inbox` holds the thread in page state, not the URL**, so a conversation
+  cannot be linked to or restored by reload. The router matches exact paths and
+  has no params; add them when a second surface needs them.
 
 ---
 
@@ -330,19 +441,44 @@ Each of these cost real debugging time. Do not reintroduce them.
 3. **Which STT provider survives real audio?** Sarvam is chosen and wired, but
    validated only against a synthetic tone. Record 20s each of Telugu, Hindi and
    code-mixed English from a real student and compare providers.
+4. **Is seven picks the right price for an unlock?** It falls out of 0.70 at
+   90% confidence rather than being chosen directly. Lower either and unlocks
+   come faster and mean less; raise them and most viewers never reach one. This
+   is the number that decides whether the app feels alive, and it cannot be
+   settled without watching real people use it.
+5. **Should a declined request be visible to the sender at all?** Today it
+   simply disappears from both inboxes — no "declined" state shown, and no way
+   to tell it apart from a request still waiting. Kinder, but it does leave
+   people hanging; the alternative is telling someone they were turned down on
+   a campus where they will see that person again.
 
 ---
 
 ## Conventions
 
-- **Tests are the contract.** 174 and rising; every bug found gets a regression
-  test. `tests/test_pairing.py` (40) splits pure selection logic from DB wiring
-  deliberately — check the module docstring before adding to it.
+- **Tests are the contract.** 243 and rising; every bug found gets a regression
+  test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
+  deliberately — check the module docstring before adding to it, and the same
+  split is repeated in `test_affinity.py` and `test_preference.py`.
 - **Comments explain *why*, never *what*.** The code says what.
 - Option-set fields are validated strings against `backend/options.py`, **not**
   database enums — a native enum needs a migration to add one value and this
   vocabulary will grow. Lifecycle states (which are genuinely closed) *are*
   enums.
-- `backend/rating.py` stays pure. `backend/rating_service.py` is the only thing
-  that touches both the maths and the database.
+- **Domain and HTTP are separate modules, and the names do not match on
+  purpose.** The pairs of files are worth knowing before looking for anything:
+
+  | Domain | HTTP | What lives there |
+  |---|---|---|
+  | `pairing.py` | `pairs.py` | generation, serve/decide, round scheduling |
+  | `connections.py` | `inbox.py` | requests, replies, declines, the inbox |
+  | `rating.py` (pure) | — | Glicko-2 and the Wilson interval, no database |
+  | `rating_service.py` | — | the only thing touching both maths and SQL |
+  | `affinity.py` | — | the unlock: counts, classification, permanence |
+  | `preference.py` | — | the online face model and its tilt |
+  | `profile_view.py` | — | the two serializers, shared by pairs and inbox |
+
+- `backend/rating.py` and `backend/preference.py` stay pure — no session, no
+  clock. That is what lets the arithmetic be tested precisely and the wiring be
+  tested separately.
 - Never commit `.env` or `*.db`. Both are gitignored; verify staging anyway.
