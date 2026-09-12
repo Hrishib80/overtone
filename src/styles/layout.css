@@ -1,0 +1,179 @@
+/* Shared app shell — offsets content for fixed sidebar on tablet+ */
+
+:root {
+  --nav-width: 0px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --nav-width: 80px;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --nav-width: 240px;
+  }
+}
+
+.page {
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .page {
+    margin-left: var(--nav-width);
+    width: calc(100% - var(--nav-width));
+    min-height: 100dvh;
+  }
+
+  .discover-page,
+  .matches-page,
+  .chatlist-page,
+  .profile-page,
+  .chat-page {
+    padding-bottom: var(--space-lg);
+  }
+}
+
+/* Shared page header (used by JS) */
+.header {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+/* Shared empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  padding: var(--space-2xl) var(--space-md);
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.empty-state__illustration,
+.empty-state__icon {
+  font-size: 3rem;
+  line-height: 1;
+}
+
+/* Chat list — JS uses __details / __row; CSS originally defined __content / __meta */
+.chatlist-content {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.chatlist-item__details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+
+.chatlist-item__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.chatlist-item__row .chatlist-item__preview {
+  flex: 1;
+  min-width: 0;
+}
+
+.chatlist-item__row .badge {
+  position: static;
+  flex-shrink: 0;
+}
+
+/* Matches */
+.matches-content {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.match-item--new .match-item__avatar {
+  border-color: var(--color-primary);
+}
+
+/* Card skeleton loading */
+.card-skeleton {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-lg);
+  background-color: var(--color-border-light);
+  animation: shimmer 2s infinite linear;
+  background-size: 200% 100%;
+}
+
+/* Shared buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px var(--space-lg);
+  border-radius: var(--radius-full);
+  font-weight: 600;
+  font-size: var(--fs-base);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+  width: 100%;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn--primary {
+  background-color: var(--color-primary);
+  color: var(--color-surface);
+}
+
+.btn--primary:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.profile-btn--logout {
+  margin-top: var(--space-xs);
+}
+
+/* Chat page shell on laptop */
+.chat-page {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.chat-page .chat-view {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+@media (min-width: 768px) {
+  .chat-page .chat-header__btn--back {
+    display: none;
+  }
+}

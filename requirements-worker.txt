@@ -1,0 +1,24 @@
+# Worker-only dependencies. These stay OUT of the API image — together with
+# torch they add several GB, and the API tier does no inference.
+#
+# After installing: python scripts/fetch_models.py
+
+# Face detection + ArcFace embedding (primary pairing axis)
+insightface>=0.7.3
+onnxruntime>=1.17.0
+Pillow>=10.0.0
+
+# Speaker embedding — voice timbre, language-independent
+speechbrain>=1.0.0
+torchaudio>=2.2.0
+
+# Multilingual text embedding — en / hi / te in one space, no translation step
+sentence-transformers>=3.0.0
+
+# Audio decoding for the 15s voice prompt (ffmpeg must also be on PATH)
+soundfile>=0.12.1
+
+# Speech-to-text is a hosted API, not a local model. Pick one and add its SDK:
+#   Sarvam    -> httpx (already a dependency)
+#   Google    -> google-cloud-speech>=2.26.0
+#   ElevenLabs-> httpx

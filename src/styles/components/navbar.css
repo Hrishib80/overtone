@@ -1,0 +1,137 @@
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 64px;
+  background-color: var(--color-surface);
+  border-top: 1px solid var(--color-border-light);
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.bottom-nav__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--color-text-muted);
+  transition: color var(--transition-fast);
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.bottom-nav__item:hover {
+  color: var(--color-text-secondary);
+}
+
+.bottom-nav__item.active {
+  color: var(--color-primary);
+}
+
+.bottom-nav__icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bottom-nav__icon svg {
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+}
+
+.bottom-nav__label {
+  display: none;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  position: absolute;
+  top: 8px;
+  right: calc(50% - 16px);
+  min-width: 18px;
+  height: 18px;
+  background-color: var(--color-primary);
+  color: var(--color-surface);
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.badge.new {
+  animation: badgePop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Tablet */
+@media (min-width: 768px) {
+  .bottom-nav {
+    top: 0;
+    right: auto;
+    width: 80px;
+    height: 100dvh;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding-top: var(--space-xl);
+    gap: var(--space-xl);
+    border-top: none;
+    border-right: 1px solid var(--color-border-light);
+  }
+  
+  .bottom-nav__item {
+    height: auto;
+    padding: var(--space-sm) 0;
+  }
+}
+
+/* Desktop */
+@media (min-width: 1024px) {
+  .bottom-nav {
+    width: 240px;
+    align-items: flex-start;
+    padding-left: var(--space-lg);
+    padding-right: var(--space-lg);
+  }
+  
+  .bottom-nav__item {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    border-radius: var(--radius-md);
+  }
+  
+  .bottom-nav__item:hover {
+    background-color: var(--color-surface-hover);
+  }
+  
+  .bottom-nav__item.active {
+    background-color: var(--color-primary-light);
+  }
+  
+  .bottom-nav__label {
+    display: block;
+    font-weight: 600;
+  }
+  
+  .badge {
+    top: auto;
+    right: var(--space-md);
+    position: relative;
+    margin-left: auto;
+  }
+}

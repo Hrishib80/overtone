@@ -1,0 +1,36 @@
+.toast {
+  position: fixed;
+  top: calc(16px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 20px;
+  background-color: var(--color-surface);
+  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-md);
+  animation: toastSlideIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 400px;
+  width: max-content;
+  pointer-events: none;
+}
+
+.toast.dismissing {
+  animation: toastSlideOut 0.3s ease-in forwards;
+}
+
+.toast--success .toast__icon {
+  color: var(--color-success);
+}
+
+.toast--error .toast__icon {
+  color: var(--color-error);
+}
+
+.toast__message {
+  font-size: var(--fs-sm);
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
