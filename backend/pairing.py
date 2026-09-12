@@ -23,8 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.affinity import apply_decision as apply_affinity
 from backend.affinity import open_question_subject_ids
+from backend.connections import on_unlock
 from backend.database import (
     Affinity,
+    Connection,
     Pairing,
     PairRound,
     PairStatus,
@@ -474,10 +476,15 @@ class Decision:
     become confident enough to reveal someone. It is returned rather than left
     to be re-derived, because the caller has to tell the viewer about it
     exactly once, on the response to the choice that caused it.
+
+    `connection` is set only when that unlock was the second half of a mutual
+    one — both people crossed independently, so there is nothing left to ask
+    and the conversation is already open.
     """
 
     pairing: Pairing
     unlocked: Affinity | None = None
+    connection: Connection | None = None
 
 
 async def record_decision(db: AsyncSession, viewer: User, pairing_id: str, chosen_id: str) -> Decision:
@@ -508,6 +515,14 @@ async def record_decision(db: AsyncSession, viewer: User, pairing_id: str, chose
     )
 
     unlocked = await apply_affinity(db, viewer_id=viewer.id, chosen_id=chosen_id, rejected_id=loser_id)
+    # A mutual crossing is a property of the unlock, not of the HTTP layer, so
+    # it is resolved here — every path that records a decision gets it, rather
+    # than only the one route that happens to serve the pair view today.
+    connection = (
+        await on_unlock(db, viewer_id=viewer.id, subject_id=unlocked.subject_id)
+        if unlocked is not None
+        else None
+    )
 
     pairing.status = PairStatus.decided
     pairing.chosen_id = chosen_id
@@ -528,7 +543,7 @@ async def record_decision(db: AsyncSession, viewer: User, pairing_id: str, chose
             )
         )
 
-    return Decision(pairing=pairing, unlocked=unlocked)
+    return Decision(pairing=pairing, unlocked=unlocked, connection=connection)
 
 
 async def expire_stale_round_two(db: AsyncSession) -> int:

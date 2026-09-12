@@ -20,7 +20,7 @@ from sqlalchemy import or_, select
 
 from backend.auth import verify_ws_token
 from backend.config import settings
-from backend.database import AsyncSessionLocal, ChatMessage, MatchRecord
+from backend.database import AsyncSessionLocal, ChatMessage, Connection, ConnectionStatus
 from backend.logging_config import get_logger
 
 log = get_logger(__name__)
@@ -61,14 +61,22 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-async def _is_participant(match_id: str, user_id: str) -> bool:
+async def _is_participant(connection_id: str, user_id: str) -> bool:
+    """Membership *and* state: a socket is only ever opened on a conversation
+    that is actually open.
+
+    A request that has not been answered has no live channel — its one message
+    went through the HTTP path, and the single-message limit would mean
+    nothing if the sender could then hold a socket open to the same room.
+    """
     if AsyncSessionLocal is None:
         return False
     async with AsyncSessionLocal() as db:
         result = await db.execute(
-            select(MatchRecord.id)
-            .where(MatchRecord.id == match_id)
-            .where(or_(MatchRecord.user_a_id == user_id, MatchRecord.user_b_id == user_id))
+            select(Connection.id)
+            .where(Connection.id == connection_id)
+            .where(Connection.status == ConnectionStatus.open)
+            .where(or_(Connection.user_a_id == user_id, Connection.user_b_id == user_id))
         )
         return result.scalar_one_or_none() is not None
 
@@ -118,7 +126,7 @@ async def chat_socket(websocket: WebSocket, room_id: str, token: str = Query(...
                 async with AsyncSessionLocal() as db:
                     db.add(
                         ChatMessage(
-                            match_id=room_id,
+                            connection_id=room_id,
                             from_user_id=user_id,
                             message_text=body.strip()[:4000],
                         )

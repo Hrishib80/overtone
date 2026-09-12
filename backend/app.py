@@ -15,10 +15,10 @@ from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.auth import router as auth_router
-from backend.chat import router as chat_router
 from backend.config import settings
 from backend.database import engine
 from backend.errors import register_error_handlers
+from backend.inbox import router as inbox_router
 from backend.logging_config import configure_logging, get_logger, request_id_var
 from backend.media import router as media_router
 from backend.pairs import router as pairs_router
@@ -121,7 +121,7 @@ def create_app() -> FastAPI:
     app.include_router(profile_router)
     app.include_router(media_router)
     app.include_router(pairs_router)
-    app.include_router(chat_router)
+    app.include_router(inbox_router)
     app.include_router(signaling_router)
 
     @app.get("/api/health", include_in_schema=False)

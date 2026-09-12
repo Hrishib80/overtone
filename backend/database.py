@@ -158,9 +158,10 @@ class ProcessingStatus(enum.StrEnum):
     failed = "failed"
 
 
-class MatchStatus(enum.StrEnum):
-    pending = "pending"
-    matched = "matched"
+class ConnectionStatus(enum.StrEnum):
+    requested = "requested"  # one opening message sent, waiting on a reply
+    open = "open"  # both sides in; the conversation is live
+    declined = "declined"  # the recipient said no, and that is final
 
 
 class ChatStatus(enum.StrEnum):
@@ -497,30 +498,52 @@ class ProfileEmbedding(Base):
 
 
 # --------------------------------------------------------------------------
-# Conversations (reworked when the message-request unlock lands in phase 04)
+# Conversations
 # --------------------------------------------------------------------------
 
 
-class MatchRecord(Base):
-    __tablename__ = "match_records"
+class Connection(Base):
+    """One conversation between two people, in whatever state it has reached.
+
+    There is exactly one row per pair, ever, keyed on the unordered
+    `connection_key` — a second request after a decline is not a new
+    connection, it is the same answer again. `user_a_id` / `user_b_id` are
+    stored in the same canonical order the key is built from, so a row and its
+    key can never disagree about who it is between.
+
+    `initiator_id` is who reached out. It is null for a connection that opened
+    because both people crossed the line independently: nobody asked, so
+    naming an asker would be a small lie about how it happened.
+    """
+
+    __tablename__ = "connections"
     __table_args__ = (
-        Index("ix_match_records_user_a", "user_a_id"),
-        Index("ix_match_records_user_b", "user_b_id"),
+        UniqueConstraint("connection_key", name="uq_connection_key"),
+        Index("ix_connections_user_a", "user_a_id", "status"),
+        Index("ix_connections_user_b", "user_b_id", "status"),
     )
 
     id = Column(String, primary_key=True, default=generate_uuid)
     user_a_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     user_b_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    status = Column(String, nullable=False, default=MatchStatus.pending)
+    connection_key = Column(String, nullable=False)
+
+    initiator_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String, nullable=False, default=ConnectionStatus.requested)
+
     created_at = Column(UTCDateTime(), default=utcnow, nullable=False)
+    opened_at = Column(UTCDateTime(), nullable=True)
+    closed_at = Column(UTCDateTime(), nullable=True)
 
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
-    __table_args__ = (Index("ix_chat_messages_match_created", "match_id", "created_at"),)
+    __table_args__ = (Index("ix_chat_messages_connection_created", "connection_id", "created_at"),)
 
     id = Column(String, primary_key=True, default=generate_uuid)
-    match_id = Column(String, ForeignKey("match_records.id", ondelete="CASCADE"), index=True, nullable=False)
+    connection_id = Column(
+        String, ForeignKey("connections.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     from_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     message_text = Column(Text)
     status = Column(String, nullable=False, default=ChatStatus.sent)
