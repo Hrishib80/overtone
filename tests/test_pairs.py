@@ -70,6 +70,9 @@ async def test_next_serves_a_round_one_pair_with_photos_only(client, db_sessionm
     assert pair is not None
     assert pair["round"] == "round_1"
     assert len(pair["subjects"]) == 2
+    # The viewer's own interested_in choice, reflected back so the heading can
+    # name what it is showing. Says nothing about either subject.
+    assert pair["segment"] == "woman"
 
     for subject in pair["subjects"]:
         # The invariant the module docstring is emphatic about: round 1 is a

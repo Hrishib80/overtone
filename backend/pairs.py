@@ -28,6 +28,11 @@ async def _serialise(db: AsyncSession, pairing) -> dict[str, Any]:
     return {
         "id": pairing.id,
         "round": pairing.round,
+        # Which audience this pair was drawn from. Not a leak: it is the
+        # viewer's own `interested_in` choice reflected back, and it says
+        # nothing about either subject that the viewer did not already ask
+        # for. The heading uses it to name what it is showing.
+        "segment": pairing.segment,
         "subjects": [
             await view(db, pairing.subject_a_id),
             await view(db, pairing.subject_b_id),

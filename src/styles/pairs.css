@@ -3,32 +3,78 @@
    Round 1 keeps the two choices side by side at every width, phone included
    — the comparison is the interaction, and stacking them into a scroll would
    turn it into two separate judgements. Round 2 is the opposite: dense,
-   scrollable, and unhurried. */
+   scrollable, and unhurried.
+
+   The whole screen sits on the sky, the same ground as the landing page. The
+   photographs are the only bright rectangles on it, which is the entire job
+   of the background here: everything that is not a face recedes. */
 
 .pairs {
   min-height: 100dvh;
   display: grid;
   grid-template-rows: auto 1fr auto;
   grid-template-columns: minmax(0, 1fr);
-  background: var(--ground);
+  background: var(--sky);
+  color: var(--on-sky);
 }
 
 .pairs__head {
+  width: 100%;
+  max-width: 1100px;
+  margin-inline: auto;
   padding: var(--s-5) var(--s-4) var(--s-4);
-  text-align: center;
 }
 
-.pairs__title {
-  font-size: var(--t-2);
+/* Small, quiet, and out of the way — it is a signature on the corner of the
+   page, not a masthead. */
+.pairs__mark {
+  font-size: var(--t-0);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  color: var(--on-sky);
+  opacity: 0.92;
+}
+
+.pairs__mark b {
   font-weight: 800;
-  letter-spacing: -0.03em;
+}
+
+/* Two weights in one line: the question light, the subject heavy. Set large
+   and tight, because at this size white on the sky is a display voice rather
+   than something anyone has to read carefully. */
+.pairs__title {
+  margin-top: var(--s-1);
+  font-size: var(--t-3);
+  font-weight: 300;
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  color: var(--on-sky);
+  text-wrap: balance;
+}
+
+.pairs__title-word {
+  font-weight: 800;
 }
 
 .pairs__sub {
   margin-top: var(--s-2);
-  color: var(--muted);
-  font-size: var(--t--1);
+  color: var(--on-sky);
+  opacity: 0.92;
+  font-size: var(--t-0);
+  font-weight: 300;
   min-height: 1.4em; /* reserve the line so the layout doesn't jump */
+}
+
+/* Anything small enough that it actually has to be read takes the deep pole
+   instead of white — 5.5:1 on the sky, where white would be 2.1:1. */
+.pairs__who {
+  margin-top: var(--s-3);
+  color: var(--on-sky-soft);
+  font-size: var(--t--1);
+}
+
+.pairs__who b {
+  font-weight: 650;
 }
 
 /* Only when the words actually change, so the subtitle is not permanently
@@ -78,9 +124,9 @@
   position: relative;
   border: 0;
   background: none;
-  color: var(--ink);
+  color: var(--on-sky-soft);
   font-size: var(--t--1);
-  font-weight: 600;
+  font-weight: 650;
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -107,9 +153,10 @@
 
 .pairs__signout {
   border: 0;
+  padding: 0;
   background: none;
-  color: var(--muted);
-  font-size: var(--t--1);
+  color: inherit;
+  font: inherit;
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -117,11 +164,51 @@
 
 /* ---- Round 1 ------------------------------------------------------------ */
 
+/* Width is derived from how tall the photographs are allowed to be, so the
+   whole comparison fits on screen without scrolling at any window size. Each
+   column is half the row, and a 3:4 box is 1.5x its height across the pair —
+   solve for the row and the height cap holds itself. */
 .choice-row {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--s-3);
   align-items: stretch;
+  width: 100%;
+  max-width: min(900px, calc(56dvh * 1.5 + var(--s-5)));
+  margin-inline: auto;
+}
+
+/* Sits over the seam. Without it the two photographs read as a list of two
+   things; with it they read as one question. Red because this is the only
+   place in the app where the two poles are genuinely opposed. */
+.vs {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--red);
+  color: var(--on-accent);
+  font-size: var(--t--1);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: 0 2px 14px rgba(11, 20, 32, 0.24);
+  pointer-events: none;
+}
+
+@media (min-width: 700px) {
+  .vs {
+    width: 64px;
+    height: 64px;
+    font-size: var(--t-0);
+  }
 }
 
 .choice {
@@ -129,7 +216,9 @@
   aspect-ratio: 3 / 4;
   max-width: 100%;
   padding: 0;
-  border: 3px solid transparent;
+  /* A white edge, so a photograph with pale corners still ends somewhere
+     against the sky. Hover and the settled state paint over it. */
+  border: 3px solid rgba(255, 255, 255, 0.9);
   border-radius: var(--radius-lg);
   background: var(--surface-2);
   overflow: hidden;
@@ -183,10 +272,20 @@
 }
 
 .choice.is-passed {
-  opacity: 0.32;
+  opacity: 0.4;
   transform: scale(0.96);
-  filter: saturate(0.35);
+  filter: saturate(0.3);
   cursor: default;
+}
+
+/* The token goes with the question, so it leaves once the question is
+   answered rather than hovering over a decided pair. */
+.choice-row:has(.is-picked) .vs {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.7);
+  transition:
+    opacity 0.2s ease,
+    transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .reveal.is-passed {
@@ -236,6 +335,8 @@
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lift);
+  color: var(--ink);
 }
 
 .pairs__empty-blot {
@@ -272,7 +373,8 @@
   border-top: 4px solid var(--rule-strong);
   border-radius: var(--radius-lg);
   padding: var(--s-5);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-lift);
+  color: var(--ink);
 }
 
 .reveal--red {

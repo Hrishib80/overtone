@@ -1,8 +1,14 @@
 /* Everything the pair loop produced.
 
-   Deliberately quieter than the pair view. That screen is a game and wants
-   contrast; this one is correspondence with people you already chose, and the
-   same treatment would make it shout.
+   The same sky as the pair view and the landing page — one ground for the
+   whole app, so moving between them is not a change of product. The
+   difference is what sits on it: the pair view puts two photographs there and
+   nothing else, this one puts white cards, which is what makes a list read as
+   quieter than a comparison without changing the palette.
+
+   Small text on the sky takes the deep pole rather than white (white is 2.1:1
+   there, the deep pole is 5.5:1); anything inside a white card takes the
+   normal ink.
 
    Motion here is short and mostly on entrances — 160-340ms on a decelerating
    curve. `prefers-reduced-motion` is handled globally in base.css, so nothing
@@ -13,7 +19,8 @@
   display: grid;
   grid-template-rows: auto 1fr;
   grid-template-columns: minmax(0, 1fr);
-  background: var(--ground);
+  background: var(--sky);
+  color: var(--on-sky);
 }
 
 .inbox__head {
@@ -21,9 +28,9 @@
   top: 0;
   z-index: 5;
   padding: var(--s-3) var(--s-4);
-  background: color-mix(in srgb, var(--ground) 86%, transparent);
+  background: color-mix(in srgb, var(--sky) 82%, transparent);
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.34);
 }
 
 .inbox__head-inner {
@@ -40,6 +47,7 @@
   font-size: var(--t-1);
   font-weight: 800;
   letter-spacing: -0.03em;
+  color: var(--on-sky);
 }
 
 .inbox__back {
@@ -50,9 +58,9 @@
   border: 0;
   border-radius: var(--radius);
   background: none;
-  color: var(--muted);
+  color: var(--on-sky-soft);
   font-size: var(--t--1);
-  font-weight: 600;
+  font-weight: 650;
   cursor: pointer;
   transition:
     background 0.15s ease,
@@ -60,8 +68,7 @@
 }
 
 .inbox__back:hover {
-  background: var(--surface-2);
-  color: var(--ink);
+  background: rgba(255, 255, 255, 0.28);
 }
 
 .inbox__body {
@@ -93,7 +100,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--muted);
+  color: var(--on-sky-soft);
 }
 
 .group__count {
@@ -111,7 +118,7 @@
 
 .group__note {
   margin-top: calc(var(--s-2) * -1);
-  color: var(--muted);
+  color: var(--on-sky-soft);
   font-size: var(--t--1);
   max-width: 48ch;
 }
@@ -138,7 +145,8 @@
   border: 1px solid var(--rule);
   border-left: 3px solid var(--red);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-lift);
+  color: var(--ink);
 }
 
 .request.is-leaving {
@@ -314,6 +322,8 @@
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: var(--radius-lg);
+  color: var(--ink);
+  box-shadow: var(--shadow);
   cursor: pointer;
   transition:
     border-color 0.15s ease,
@@ -325,7 +335,7 @@
 .row:focus-visible {
   border-color: var(--rule-strong);
   transform: translateY(-1px);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-lift);
 }
 
 .row:active {
@@ -333,13 +343,13 @@
 }
 
 .row--muted {
-  background: none;
+  background: color-mix(in srgb, var(--surface) 62%, transparent);
   border-style: dashed;
+  box-shadow: none;
 }
 
 .row--muted .row__name {
   font-weight: 600;
-  color: var(--muted);
 }
 
 .row--loading {
@@ -422,6 +432,8 @@
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lift);
+  color: var(--ink);
 }
 
 .blank__blot {

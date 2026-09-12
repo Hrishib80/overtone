@@ -13,9 +13,17 @@
   --blue-strong: #00308c;
   --blue-wash: #e9f0fc;
 
-  /* Ground */
+  /* Ground. The sky is the brand surface, not an accent — the landing page
+     and the comparison both sit on it, and a pale neutral in between makes
+     the app look like two products. */
   --sky: #7fb8ea;
   --cyan: #d8fdff;
+
+  /* Text on the sky. White is the display voice and is deliberately
+     low-contrast at that size; anything small enough to actually read takes
+     the deep pole instead, which clears AA against the sky at 5.5:1. */
+  --on-sky: #ffffff;
+  --on-sky-soft: #00308c;
 
   /* Neutrals, biased blue */
   --ink: #0b1420;
@@ -86,6 +94,12 @@
     --rule: #1f2e3c;
     --rule-strong: #33475a;
 
+    /* The same surface, taken down to something that can be looked at in
+       the dark. White display type still reads on it. */
+    --sky: #12283f;
+    --on-sky: #ffffff;
+    --on-sky-soft: #a8cff2;
+
     --on-accent: #071019;
 
     --ok: #4fbf9a;
@@ -114,6 +128,11 @@
   --ground: #080e15;
   --rule: #1f2e3c;
   --rule-strong: #33475a;
+
+  --sky: #12283f;
+  --on-sky: #ffffff;
+  --on-sky-soft: #a8cff2;
+  --on-accent: #071019;
 
   --ok: #4fbf9a;
   --ok-wash: #0f2620;

@@ -22,29 +22,56 @@ import { toast } from '../utils/toast.js';
 
 const SETTLE_MS = 360; // long enough to read the result of a tap, short enough not to wait on it
 
+/* The heading names what it is showing, from the viewer's own interested_in
+   segment. "Which person?" for nonbinary rather than inventing a noun. */
+const SEGMENT_NOUN = {
+  man: 'man',
+  woman: 'woman',
+  nonbinary: 'person',
+};
+
 export default {
   async render() {
     const page = createElement('div', { className: 'pairs' });
 
     const header = createElement('header', { className: 'pairs__head' });
-    const heading = createElement('h1', { className: 'pairs__title' }, 'Who would you rather?');
+
+    const mark = createElement('p', { className: 'pairs__mark' });
+    mark.innerHTML = 'Over<b>tone</b>';
+
+    // Two weights in one line, the way the source sets it: the light half is
+    // the question, the bold half is the thing being asked about.
+    const heading = createElement('h1', { className: 'pairs__title' });
+    const headingLead = createElement('span', { className: 'pairs__title-lead' }, 'Which ');
+    const headingWord = createElement('b', { className: 'pairs__title-word' }, 'one');
+    heading.append(headingLead, headingWord, '?');
+
     const sub = createElement('p', { className: 'pairs__sub' }, '');
-    header.append(heading, sub);
+
+    const who = createElement('p', { className: 'pairs__who' });
+    header.append(mark, heading, sub, who);
+
+    function renderSignedIn() {
+      const email = store.getState().me?.email;
+      who.replaceChildren();
+      if (!email) return;
+      who.append('signed in as ', createElement('b', {}, email), ' · ');
+      const out = createElement('button', { className: 'pairs__signout', type: 'button' }, 'sign out');
+      out.addEventListener('click', () => {
+        store.signOut();
+        router.go('/');
+      });
+      who.append(out);
+    }
 
     const stage = createElement('main', { className: 'pairs__stage' });
 
     const foot = createElement('footer', { className: 'pairs__foot' });
-    const inboxLink = createElement('button', { className: 'pairs__inbox', type: 'button' }, 'Your people');
+    const inboxLink = createElement('button', { className: 'pairs__inbox', type: 'button' }, 'your people');
     const inboxDot = createElement('span', { className: 'pairs__badge', hidden: 'hidden' });
     inboxLink.append(inboxDot);
     inboxLink.addEventListener('click', () => router.go('/inbox'));
-
-    const signOut = createElement('button', { className: 'pairs__signout', type: 'button' }, 'Sign out');
-    signOut.addEventListener('click', () => {
-      store.signOut();
-      router.go('/');
-    });
-    foot.append(inboxLink, signOut);
+    foot.append(inboxLink);
 
     page.append(header, stage, foot);
 
@@ -99,7 +126,8 @@ export default {
 
     /* ---- the unlock ---- */
     function renderUnlock(subject, connectionId) {
-      heading.textContent = connectionId ? 'You both did' : 'You keep choosing them';
+      headingLead.textContent = connectionId ? 'You both ' : 'You keep ';
+      headingWord.textContent = connectionId ? 'did' : 'choosing them';
       say(
         connectionId
           ? 'They picked you too, so there is nothing to ask. Go and talk.'
@@ -178,10 +206,15 @@ export default {
       }
     }
 
+    function setQuestion(segment) {
+      headingWord.textContent = SEGMENT_NOUN[segment] || 'one';
+    }
+
     /* ---- round 1: two photos, nothing else ---- */
     function renderRoundOne(pairing) {
-      heading.textContent = 'Who would you rather?';
-      if (!sub.textContent) say('Go with your gut.');
+      headingLead.textContent = 'Which ';
+      setQuestion(pairing.segment);
+      if (!sub.textContent) say('pick the one you prefer');
 
       const row = createElement('div', { className: 'choice-row' });
       choices = new Map();
@@ -206,6 +239,9 @@ export default {
         row.append(button);
       });
 
+      // Sits over the seam between the two, so the pair reads as one object
+      // rather than two things that happen to be adjacent.
+      row.append(createElement('div', { className: 'vs', 'aria-hidden': 'true' }, 'vs'));
       setStage(row);
     }
 
@@ -230,8 +266,9 @@ export default {
     }
 
     function renderRoundTwo(pairing) {
-      heading.textContent = 'You saw these two before';
-      say('Now with everything showing. Take your time.');
+      headingLead.textContent = 'Which ';
+      setQuestion(pairing.segment);
+      say('you saw these two before — now with everything showing');
 
       const row = createElement('div', { className: 'reveal-row' });
       choices = new Map();
@@ -246,7 +283,8 @@ export default {
       try {
         const { pair } = await api.getNextPair();
         if (!pair) {
-          heading.textContent = 'Overtone';
+          headingLead.textContent = 'Nobody ';
+          headingWord.textContent = 'yet';
           say('');
           setStage(emptyState());
           return;
@@ -265,6 +303,7 @@ export default {
     }
 
     page.mounted = () => {
+      renderSignedIn();
       load();
       checkInbox();
     };
