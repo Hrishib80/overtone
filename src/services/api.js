@@ -98,6 +98,15 @@ class Api {
   submitProfile() {
     return this.request('POST', '/api/profile/submit');
   }
+
+  // ---- pairs ----
+  getNextPair() {
+    return this.request('GET', '/api/pairs/next');
+  }
+
+  decidePair(pairingId, chosenId) {
+    return this.request('POST', `/api/pairs/${pairingId}/decide`, { chosen_id: chosenId });
+  }
 }
 
 export default new Api();

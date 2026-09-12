@@ -6,7 +6,7 @@ const HOME_FOR_STATUS = {
   pending_verification: '/verify',
   onboarding: '/onboarding',
   waitlisted: '/status',
-  active: '/status',
+  active: '/pairs',
 };
 
 const PUBLIC_ROUTES = new Set(['/', '/join', '/signin']);

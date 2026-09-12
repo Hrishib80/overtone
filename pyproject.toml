@@ -30,3 +30,6 @@ ignore = [
 "tests/conftest.py" = ["E402"] # env must be set before backend imports
 "backend/pairing.py" = ["S311"] # anchor/segment sampling is algorithmic variety, not security
 "tests/test_pairing.py" = ["S311"] # seeded random.Random for reproducible pair-generation tests
+# Dev-only seeding CLI: the demo password is the point, the RNG is seeded for
+# reproducible fake data, and blocking file writes are fine in a one-shot script.
+"scripts/seed_demo.py" = ["S105", "S311", "ASYNC240"]

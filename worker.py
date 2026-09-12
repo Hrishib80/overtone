@@ -27,6 +27,7 @@ from backend.config import settings  # noqa: E402
 from backend.database import AsyncSessionLocal  # noqa: E402
 from backend.handlers import HANDLERS  # noqa: E402
 from backend.logging_config import configure_logging, get_logger  # noqa: E402
+from backend.pairing import expire_stale_round_two  # noqa: E402
 
 configure_logging(level=settings.log_level, json_output=settings.emit_json_logs)
 log = get_logger("worker")
@@ -72,6 +73,24 @@ async def drain(*, limit: int) -> int:
     return len(claimed)
 
 
+async def maintenance() -> None:
+    """Periodic sweeps that nothing else triggers.
+
+    Both are recovery from something not happening rather than from something
+    failing, which is exactly the kind of work that has no natural caller:
+    a job left `running` by a worker that died is stranded until requeued, and
+    a round-2 pairing nobody returns for would otherwise surface stale
+    whenever that viewer next opens the app.
+    """
+    try:
+        async with AsyncSessionLocal() as db:
+            await jobs.reap_stale(db)
+            await expire_stale_round_two(db)
+            await db.commit()
+    except Exception:
+        log.exception("maintenance_failed")
+
+
 async def loop() -> None:
     log.info("worker_started", models=ml.model_status(), poll=settings.worker_poll_seconds)
 
@@ -83,12 +102,10 @@ async def loop() -> None:
             log.exception("worker_tick_failed")
             ran = 0
 
-        # Roughly every five minutes, requeue anything a dead worker left
-        # marked running — otherwise those jobs are stranded forever.
+        # Roughly every five minutes, run the periodic sweeps.
         ticks += 1
         if ticks % max(1, int(300 / settings.worker_poll_seconds)) == 0:
-            async with AsyncSessionLocal() as db:
-                await jobs.reap_stale(db)
+            await maintenance()
 
         if ran == 0:
             with contextlib.suppress(TimeoutError):
@@ -119,6 +136,9 @@ async def main() -> int:
             total += ran
             if ran == 0:
                 break
+        # --once is also how a cron-style deployment runs the worker, so it
+        # has to do the periodic sweeps too — otherwise nothing ever expires.
+        await maintenance()
         log.info("worker_drained", jobs=total)
         return 0
 

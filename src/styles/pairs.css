@@ -1,0 +1,296 @@
+/* The pair view.
+
+   Round 1 keeps the two choices side by side at every width, phone included
+   — the comparison is the interaction, and stacking them into a scroll would
+   turn it into two separate judgements. Round 2 is the opposite: dense,
+   scrollable, and unhurried. */
+
+.pairs {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background: var(--ground);
+}
+
+.pairs__head {
+  padding: var(--s-5) var(--s-4) var(--s-4);
+  text-align: center;
+}
+
+.pairs__title {
+  font-size: var(--t-2);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.pairs__sub {
+  margin-top: var(--s-2);
+  color: var(--muted);
+  font-size: var(--t--1);
+  min-height: 1.4em; /* reserve the line so the layout doesn't jump */
+}
+
+.pairs__stage {
+  display: grid;
+  align-content: center;
+  padding-inline: var(--s-4);
+  width: 100%;
+  max-width: 1100px;
+  margin-inline: auto;
+}
+
+.pairs__foot {
+  padding: var(--s-4);
+  padding-bottom: max(var(--s-4), env(safe-area-inset-bottom));
+  text-align: center;
+}
+
+.pairs__signout {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: var(--t--1);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---- Round 1 ------------------------------------------------------------ */
+
+.choice-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-3);
+  align-items: stretch;
+}
+
+.choice {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  max-width: 100%;
+  padding: 0;
+  border: 3px solid transparent;
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.choice img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.choice:hover,
+.choice:focus-visible {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lift);
+}
+
+.choice--red:hover,
+.choice--red:focus-visible {
+  border-color: var(--red);
+}
+
+.choice--blue:hover,
+.choice--blue:focus-visible {
+  border-color: var(--blue);
+}
+
+.choice:active {
+  transform: translateY(0) scale(0.985);
+}
+
+.choice--loading {
+  cursor: default;
+  background: linear-gradient(100deg, var(--surface-2) 30%, var(--surface) 50%, var(--surface-2) 70%);
+  background-size: 220% 100%;
+  animation: shimmer 1.3s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -220% 0;
+  }
+}
+
+.choice__missing {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--muted);
+  font-size: var(--t--1);
+}
+
+@media (min-width: 700px) {
+  .choice-row {
+    gap: var(--s-5);
+  }
+}
+
+/* ---- Empty state -------------------------------------------------------- */
+
+.pairs__empty {
+  text-align: center;
+  max-width: 420px;
+  margin: var(--s-7) auto;
+  padding: var(--s-6) var(--s-5);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+}
+
+.pairs__empty-blot {
+  width: 76px;
+  height: 76px;
+  margin: 0 auto var(--s-4);
+  border-radius: 50%;
+  background: rgba(0, 63, 182, 0.765);
+}
+
+.pairs__empty h2 {
+  margin-bottom: var(--s-3);
+}
+
+/* ---- Round 2 ------------------------------------------------------------ */
+
+.reveal-row {
+  display: grid;
+  gap: var(--s-5);
+  padding-block: var(--s-4) var(--s-6);
+  align-self: start;
+}
+
+@media (min-width: 900px) {
+  .reveal-row {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+.reveal {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-top: 4px solid var(--rule-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--s-5);
+  box-shadow: var(--shadow);
+}
+
+.reveal--red {
+  border-top-color: var(--red);
+}
+.reveal--blue {
+  border-top-color: var(--blue);
+}
+
+.reveal__gallery {
+  display: flex;
+  gap: var(--s-2);
+  overflow-x: auto;
+  margin-bottom: var(--s-4);
+  scroll-snap-type: x mandatory;
+}
+
+.reveal__gallery img {
+  flex: 0 0 auto;
+  width: min(70%, 240px);
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: var(--radius);
+  scroll-snap-align: start;
+}
+
+.reveal__name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  font-size: var(--t-2);
+  margin-bottom: var(--s-4);
+}
+
+.reveal__age {
+  font-family: var(--mono);
+  font-size: var(--t-0);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.reveal__facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--s-2) var(--s-4);
+  margin-bottom: var(--s-5);
+  font-size: var(--t--1);
+}
+
+.reveal__facts dt {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  align-self: baseline;
+}
+
+.reveal__facts dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.reveal__prompts {
+  display: grid;
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+}
+
+.prompt-card {
+  padding: var(--s-4);
+  background: var(--surface-2);
+  border-radius: var(--radius);
+}
+
+.prompt-card__q {
+  font-family: var(--mono);
+  font-size: var(--t--1);
+  color: var(--muted);
+  margin-bottom: var(--s-2);
+}
+
+.prompt-card__a {
+  font-size: var(--t-1);
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+}
+
+.prompt-card__pending {
+  font-size: var(--t--1);
+  color: var(--muted);
+  font-style: italic;
+}
+
+.prompt-card audio {
+  width: 100%;
+  margin-top: var(--s-2);
+}
+
+/* Deliberately not sticky. A pinned CTA inside a tall card floats over that
+   card's own prompts as you scroll, and with two cards side by side you get
+   two of them doing it. Round 2 is the considered look — reaching the button
+   by reading to the end of the profile is the behaviour we want. */
+.reveal__pick {
+  margin-top: var(--s-2);
+}
+
+.reveal--blue .reveal__pick {
+  background: var(--blue);
+}
+
+.reveal--blue .reveal__pick:hover:not(:disabled) {
+  background: var(--blue-strong);
+}
