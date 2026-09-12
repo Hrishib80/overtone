@@ -8,23 +8,7 @@ from sqlalchemy import select
 
 from backend.access import invite_next
 from backend.database import User, UserStatus, WaitlistEntry, WaitlistStatus, utcnow
-from tests.conftest import CAMPUS_DOMAIN, complete_profile, register_and_verify
-
-
-async def onboard(
-    client, email: str, *, visible_as: list[str], interested_in: list[str], store: dict
-) -> dict:
-    account = await register_and_verify(client, email)
-    await complete_profile(
-        client,
-        account["headers"],
-        visible_as=visible_as,
-        interested_in=interested_in,
-        store=store,
-    )
-    response = await client.post("/api/profile/submit", headers=account["headers"])
-    assert response.status_code == 200, response.text
-    return {**account, "submit": response.json()}
+from tests.conftest import CAMPUS_DOMAIN, complete_profile, onboard, register_and_verify
 
 
 @pytest.mark.asyncio

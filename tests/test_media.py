@@ -10,9 +10,8 @@ from sqlalchemy import select
 
 from backend import jobs
 from backend.database import MediaAsset, MediaStatus, ProfileEmbedding
-from backend.handlers import HANDLERS
 from backend.ml.base import FACE_DIM, TEXT_DIM, VOICE_DIM
-from tests.conftest import CAMPUS_DOMAIN, complete_profile, register_and_verify
+from tests.conftest import CAMPUS_DOMAIN, complete_profile, register_and_verify, run_jobs
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake-image-payload" * 8
 WEBM = b"\x1aE\xdf\xa3" + b"fake-audio-payload" * 8
@@ -24,21 +23,6 @@ async def request_upload(client, headers, *, kind="photo", content_type="image/j
         headers=headers,
         json={"kind": kind, "content_type": content_type, "byte_size": size},
     )
-
-
-async def run_jobs(db_sessionmaker) -> int:
-    """Drain the queue the way worker.py does."""
-    ran = 0
-    async with db_sessionmaker() as db:
-        claimed = await jobs.claim(db, limit=20)
-    for job in claimed:
-        async with db_sessionmaker() as db:
-            await HANDLERS[job.kind](db, job.payload)
-        async with db_sessionmaker() as db:
-            fresh = await db.get(jobs.Job, job.id)
-            await jobs.complete(db, fresh)
-        ran += 1
-    return ran
 
 
 @pytest.mark.asyncio

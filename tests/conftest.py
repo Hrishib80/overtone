@@ -21,9 +21,11 @@ import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
+from backend import jobs as jobs_module  # noqa: E402
 from backend import storage  # noqa: E402
 from backend.app import create_app  # noqa: E402
 from backend.database import Base, Scope, ScopeStatus, SegmentCap, get_db  # noqa: E402
+from backend.handlers import HANDLERS  # noqa: E402
 from backend.seeds import seed_all  # noqa: E402
 
 CAMPUS_DOMAIN = "campus.edu"
@@ -66,6 +68,29 @@ def fake_storage(monkeypatch):
     monkeypatch.setattr(storage, "download", download)
     monkeypatch.setattr(storage, "delete", delete)
     return store
+
+
+async def run_jobs(db_sessionmaker) -> int:
+    """Drain the queue the way `worker.py --once` does.
+
+    Loops rather than claiming a single batch: `process_voice` enqueues a
+    `refresh_text` job as a side effect of its own completion, and that row
+    does not exist yet when an outer, one-shot claim runs — a single pass can
+    silently leave a chained job unprocessed.
+    """
+    total = 0
+    while True:
+        async with db_sessionmaker() as db:
+            claimed = await jobs_module.claim(db, limit=20)
+        if not claimed:
+            return total
+        for job in claimed:
+            async with db_sessionmaker() as db:
+                await HANDLERS[job.kind](db, job.payload)
+            async with db_sessionmaker() as db:
+                fresh = await db.get(jobs_module.Job, job.id)
+                await jobs_module.complete(db, fresh)
+            total += 1
 
 
 async def upload_media(client, headers, store, *, kind="photo", content_type="image/jpeg", body=None):
@@ -219,6 +244,29 @@ async def complete_profile(
         },
     )
     assert prompts.status_code == 200, prompts.text
+
+
+async def onboard(
+    client: AsyncClient,
+    email: str,
+    *,
+    visible_as: list[str],
+    interested_in: list[str],
+    store: dict,
+) -> dict:
+    """Register, verify, complete the profile, and submit — the full path
+    from a bare email to an admitted (or waitlisted) account."""
+    account = await register_and_verify(client, email)
+    await complete_profile(
+        client,
+        account["headers"],
+        visible_as=visible_as,
+        interested_in=interested_in,
+        store=store,
+    )
+    response = await client.post("/api/profile/submit", headers=account["headers"])
+    assert response.status_code == 200, response.text
+    return {**account, "submit": response.json()}
 
 
 @pytest_asyncio.fixture
