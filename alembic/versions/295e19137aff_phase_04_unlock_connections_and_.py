@@ -1,8 +1,8 @@
-"""phase 04: unlock, requests and connections
+"""phase 04: unlock, connections and preference
 
-Revision ID: 6932bbcba306
+Revision ID: 295e19137aff
 Revises: 
-Create Date: 2026-09-12 18:24:47.042185
+Create Date: 2026-09-12 18:39:27.551177
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 import pgvector.sqlalchemy
 
 # revision identifiers, used by Alembic.
-revision: str = '6932bbcba306'
+revision: str = '295e19137aff'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -327,6 +327,17 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('user_id', 'segment'),
     sa.UniqueConstraint('user_id', 'segment', name='uq_visible_as')
     )
+    op.create_table('viewer_preferences',
+    sa.Column('id', sa.String(), nullable=False),
+    sa.Column('viewer_id', sa.String(), nullable=False),
+    sa.Column('segment', sa.String(), nullable=False),
+    sa.Column('weights', pgvector.sqlalchemy.vector.VECTOR(dim=512).with_variant(sa.JSON(), 'sqlite'), nullable=True),
+    sa.Column('observations', sa.Integer(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['viewer_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('viewer_id', 'segment', name='uq_viewer_preference')
+    )
     op.create_table('waitlist_entries',
     sa.Column('id', sa.String(), nullable=False),
     sa.Column('user_id', sa.String(), nullable=False),
@@ -388,6 +399,7 @@ def downgrade() -> None:
         batch_op.drop_index('ix_waitlist_queue')
 
     op.drop_table('waitlist_entries')
+    op.drop_table('viewer_preferences')
     op.drop_table('user_visible_as')
     op.drop_table('user_interested_in')
     with op.batch_alter_table('ratings', schema=None) as batch_op:

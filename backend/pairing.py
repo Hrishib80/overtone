@@ -44,6 +44,9 @@ from backend.database import (
 )
 from backend.errors import AppError, NotAuthorized, NotFound
 from backend.logging_config import get_logger
+from backend.preference import load_weights as load_preference
+from backend.preference import observe as observe_preference
+from backend.preference import tilt as preference_tilt
 from backend.rating import Rating as RatingValue
 from backend.rating_service import apply_comparison
 
@@ -255,6 +258,7 @@ def _pick_anchor(
     candidates: list[Candidate],
     rng: random.Random,
     focus: set[str] | None = None,
+    preference: list[float] | None = None,
 ) -> Candidate:
     """Choose who the pair is built around.
 
@@ -265,7 +269,10 @@ def _pick_anchor(
 
     Otherwise the draw is weighted toward wide deviation and low exposure, so
     the system keeps learning about people it knows least rather than
-    circling the same well-measured faces.
+    circling the same well-measured faces, and then bent — gently, and only
+    within that — toward what this viewer has been choosing. The bend is
+    bounded and can be switched off; `backend/preference.py` explains what it
+    costs.
     """
     if focus and rng.random() < RE_EXPOSURE_RATE:
         live = [c for c in candidates if c.user_id in focus]
@@ -277,7 +284,10 @@ def _pick_anchor(
 
     # Weighted sampling for pair variety, not a security decision — the
     # default `random` module is the right tool here.
-    weights = [anchor_weight(c.rating.deviation, c.exposure) for c in candidates]
+    weights = [
+        anchor_weight(c.rating.deviation, c.exposure) * preference_tilt(preference, c.face)
+        for c in candidates
+    ]
     if sum(weights) <= 0:
         return rng.choice(candidates)
     return rng.choices(candidates, weights=weights, k=1)[0]
@@ -354,11 +364,12 @@ async def generate_one_pair(
 
     seen = await _seen_pair_keys(db, viewer.id, PairRound.round_1)
     focus = set(await open_question_subject_ids(db, viewer.id))
+    preference = await load_preference(db, viewer.id, segment)
 
     # A handful of anchor attempts, in case a draw turns out to have no
     # unseen partner left anywhere in its band.
     for _ in range(min(10, len(candidates))):
-        anchor = _pick_anchor(candidates, rng, focus)
+        anchor = _pick_anchor(candidates, rng, focus, preference)
         partner = _pick_partner(anchor, candidates, seen)
         if partner is None:
             continue
@@ -529,6 +540,16 @@ async def record_decision(db: AsyncSession, viewer: User, pairing_id: str, chose
     pairing.decided_at = utcnow()
 
     if pairing.round == PairRound.round_1:
+        # Round 1 is the only clean supervision for a model over faces: the
+        # two people looked alike and nothing else was showing, so the
+        # difference between them is close to what the viewer responded to.
+        await observe_preference(
+            db,
+            viewer_id=viewer.id,
+            segment=pairing.segment,
+            chosen_id=chosen_id,
+            rejected_id=loser_id,
+        )
         db.add(
             Pairing(
                 viewer_id=pairing.viewer_id,

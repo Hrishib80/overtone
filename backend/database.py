@@ -650,6 +650,32 @@ class Pairing(Base):
     shown_at = Column(UTCDateTime(), nullable=True)
 
 
+class ViewerPreference(Base):
+    """One viewer's learned taste, as a direction in the face embedding space.
+
+    The same 512 dimensions a face lives in, so the two can be compared
+    directly — the vector is not a face, it is the direction that has been
+    separating the faces this viewer picks from the ones they pass over.
+
+    Per segment, like `Rating`, and for the same reason: someone interested in
+    more than one segment is not one taste applied twice.
+
+    Only round-1 decisions train it. See `backend/preference.py` for why.
+    """
+
+    __tablename__ = "viewer_preferences"
+    __table_args__ = (UniqueConstraint("viewer_id", "segment", name="uq_viewer_preference"),)
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    viewer_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    segment = Column(String, nullable=False)
+
+    weights = Column(embedding_column(512), nullable=True)
+    observations = Column(Integer, nullable=False, default=0)
+
+    updated_at = Column(UTCDateTime(), nullable=False, default=utcnow, onupdate=utcnow)
+
+
 def pair_key(subject_a_id: str, subject_b_id: str) -> str:
     """Canonical unordered key for two subjects, order-independent."""
     return "|".join(sorted((subject_a_id, subject_b_id)))

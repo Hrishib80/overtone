@@ -30,6 +30,7 @@ from backend.database import (
     UserInterestedIn,
     UserStatus,
     UserVisibleAs,
+    ViewerPreference,
     pair_key,
     utcnow,
 )
@@ -1264,3 +1265,85 @@ async def test_generate_one_pair_re_anchors_on_a_picked_subject(db_sessionmaker,
     assert chosen in (second.subject_a_id, second.subject_b_id)
     assert second.pair_key != first.pair_key
     assert set(subjects) >= {second.subject_a_id, second.subject_b_id}
+
+
+@pytest.mark.asyncio
+async def test_only_round_one_trains_the_preference_model(db_sessionmaker, scope):
+    """The decision this rests on, pinned.
+
+    A round-2 pick may have been driven by a prompt answer or a degree. Folding
+    it into a model over *face* vectors would attribute it to a face and teach
+    the system something false, so round 2 updates ratings and affinity and
+    deliberately leaves the face model alone.
+    """
+    viewer_id = await _seed_user(
+        db_sessionmaker,
+        scope_id=scope.id,
+        email="v@campus.edu",
+        visible_as=["man"],
+        interested_in=["woman"],
+        face=[1.0, 0.0],
+    )
+    a = await _seed_user(
+        db_sessionmaker,
+        scope_id=scope.id,
+        email="a@campus.edu",
+        visible_as=["woman"],
+        interested_in=["man"],
+        face=[1.0, 0.0],
+    )
+    b = await _seed_user(
+        db_sessionmaker,
+        scope_id=scope.id,
+        email="b@campus.edu",
+        visible_as=["woman"],
+        interested_in=["man"],
+        face=[0.0, 1.0],
+    )
+
+    async def observations():
+        async with db_sessionmaker() as db:
+            row = (await db.execute(select(ViewerPreference))).scalars().first()
+            return row.observations if row else 0
+
+    async with db_sessionmaker() as db:
+        first = Pairing(
+            viewer_id=viewer_id,
+            subject_a_id=a,
+            subject_b_id=b,
+            pair_key=pair_key(a, b),
+            segment="woman",
+            round=PairRound.round_1,
+            status=PairStatus.shown,
+            shown_at=utcnow(),
+        )
+        db.add(first)
+        await db.flush()
+        viewer = await db.get(User, viewer_id)
+        await record_decision(db, viewer, first.id, a)
+        await db.commit()
+
+    assert await observations() == 1
+
+    # Deciding the round-2 pairing that the round-1 decision scheduled, rather
+    # than a second one: the unique key is per (viewer, pair, round).
+    async with db_sessionmaker() as db:
+        second = (
+            (
+                await db.execute(
+                    select(Pairing)
+                    .where(Pairing.viewer_id == viewer_id)
+                    .where(Pairing.round == PairRound.round_2)
+                )
+            )
+            .scalars()
+            .one()
+        )
+        second.status = PairStatus.shown
+        second.shown_at = utcnow()
+        await db.flush()
+        viewer = await db.get(User, viewer_id)
+        await record_decision(db, viewer, second.id, a)
+        await db.commit()
+
+    assert await observations() == 1, "round 2 must not train a model over faces"
