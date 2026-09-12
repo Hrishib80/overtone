@@ -1,142 +1,353 @@
 /* Everything the pair loop produced.
 
    Deliberately quieter than the pair view. That screen is a game and wants
-   contrast; this one is correspondence with people the viewer already chose,
-   and the same treatment would make it shout. */
+   contrast; this one is correspondence with people you already chose, and the
+   same treatment would make it shout.
+
+   Motion here is short and mostly on entrances — 160-340ms on a decelerating
+   curve. `prefers-reduced-motion` is handled globally in base.css, so nothing
+   below needs to repeat the guard. */
 
 .inbox {
   min-height: 100dvh;
   display: grid;
   grid-template-rows: auto 1fr;
+  grid-template-columns: minmax(0, 1fr);
   background: var(--ground);
 }
 
 .inbox__head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s-4);
-  flex-wrap: wrap;
-  padding: var(--s-5) var(--s-4) var(--s-4);
-  width: 100%;
-  max-width: 760px;
-  margin-inline: auto;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: var(--s-3) var(--s-4);
+  background: color-mix(in srgb, var(--ground) 86%, transparent);
+  backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--rule);
 }
 
+.inbox__head-inner {
+  width: 100%;
+  max-width: 680px;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-4);
+}
+
 .inbox__title {
-  font-size: var(--t-2);
+  font-size: var(--t-1);
   font-weight: 800;
   letter-spacing: -0.03em;
 }
 
 .inbox__back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
   border: 0;
+  border-radius: var(--radius);
   background: none;
-  padding: 0;
   color: var(--muted);
   font-size: var(--t--1);
+  font-weight: 600;
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .inbox__back:hover {
+  background: var(--surface-2);
   color: var(--ink);
 }
 
 .inbox__body {
   width: 100%;
-  max-width: 760px;
+  max-width: 680px;
   margin-inline: auto;
-  padding: var(--s-4);
-  padding-bottom: max(var(--s-6), env(safe-area-inset-bottom));
+  padding: var(--s-5) var(--s-4);
+  padding-bottom: max(var(--s-7), env(safe-area-inset-bottom));
   display: grid;
-  gap: var(--s-6);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-7);
   align-content: start;
 }
 
-.inbox__section {
+/* ---- groups -------------------------------------------------------------- */
+
+.group {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s-3);
 }
 
-.inbox__section-title {
+.group__title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
   font-family: var(--mono);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   color: var(--muted);
 }
 
-.inbox__section-note {
-  margin-top: calc(var(--s-3) * -1);
+.group__count {
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding-inline: 5px;
+  border-radius: 9px;
+  background: var(--red);
+  color: var(--on-accent);
+  font-size: 0.68rem;
+  letter-spacing: 0;
+}
+
+.group__note {
+  margin-top: calc(var(--s-2) * -1);
   color: var(--muted);
   font-size: var(--t--1);
-  max-width: 46ch;
+  max-width: 48ch;
+}
+
+.rise {
+  animation: rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: var(--rise-delay, 0ms);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* ---- a request ----------------------------------------------------------- */
+
+.request {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--red);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.request.is-leaving {
+  animation: leave 0.26s ease forwards;
+}
+
+@keyframes leave {
+  to {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+}
+
+.request__top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.request__who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.request__name {
+  font-weight: 700;
+}
+
+.request__when {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+
+/* The message itself, given the weight of the thing it is: somebody wrote
+   once and cannot write again until this is answered. */
+.request__quote {
+  margin: 0;
+  padding-left: var(--s-4);
+  border-left: 2px solid var(--rule);
+  color: var(--ink);
+  font-size: var(--t-1);
+  line-height: 1.45;
+}
+
+.request__actions {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.request__reply {
+  flex: 0 1 auto;
+  min-width: 136px;
+}
+
+.request__pass {
+  flex: 0 0 auto;
+}
+
+/* On a phone the two of them together are about the width of the card
+   anyway, so let them fill it rather than leaving a ragged gap. */
+@media (max-width: 560px) {
+  .request__reply {
+    flex: 1 1 auto;
+  }
+}
+
+/* ---- the deck ------------------------------------------------------------ */
+
+/* A row you move along, not a column you scroll past. Each of these opens a
+   whole screen when tapped, so the list of them stays small. */
+.deck {
+  display: flex;
+  gap: var(--s-3);
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-block: var(--s-1) var(--s-3);
+  margin-inline: calc(var(--s-4) * -1);
+  padding-inline: var(--s-4);
+  scrollbar-width: thin;
+}
+
+.card {
+  position: relative;
+  flex: 0 0 auto;
+  width: 158px;
+  aspect-ratio: 3 / 4;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface-2);
+  scroll-snap-align: start;
+  cursor: pointer;
+  transition:
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.22s ease;
+}
+
+.card:hover,
+.card:focus-visible {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lift);
+}
+
+.card:active {
+  transform: translateY(-1px) scale(0.99);
+}
+
+.card__photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.card__photo--blank {
+  background: var(--surface-2);
+}
+
+/* Scrim, so a name stays legible over whatever the photograph happens to be
+   doing at the bottom of the frame. */
+.card__veil {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 55%;
+  background: linear-gradient(to top, rgba(8, 14, 21, 0.82), rgba(8, 14, 21, 0));
+  pointer-events: none;
+}
+
+.card__caption {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  color: #fff;
+  text-align: left;
+}
+
+.card__name {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card__age {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  opacity: 0.82;
 }
 
 /* ---- rows ---------------------------------------------------------------- */
+
+.rows {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-2);
+}
 
 .row {
   display: flex;
   align-items: center;
   gap: var(--s-3);
   width: 100%;
+  min-width: 0;
   padding: var(--s-3);
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: var(--radius-lg);
   cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.15s ease;
 }
 
-.row:hover {
+.row:hover,
+.row:focus-visible {
   border-color: var(--rule-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
 }
 
-/* A row and its dismissal read as one object, so they share a border rather
-   than sitting as two separate cards with a gap between them. */
-.row-pair {
-  display: flex;
-  align-items: stretch;
-  gap: var(--s-2);
+.row:active {
+  transform: translateY(0);
 }
 
-.row-pair .row {
-  flex: 1;
-  min-width: 0;
-}
-
-.row__decline {
-  flex: 0 0 auto;
-  padding-inline: var(--s-3);
+.row--muted {
   background: none;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-lg);
+  border-style: dashed;
+}
+
+.row--muted .row__name {
+  font-weight: 600;
   color: var(--muted);
-  font-size: var(--t--1);
-  cursor: pointer;
 }
 
-.row__decline:hover {
-  border-color: var(--red);
-  color: var(--red);
-}
-
-.row__avatar {
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  object-fit: cover;
-  background: var(--surface-2);
-}
-
-.row__avatar--blank {
-  display: grid;
-  place-items: center;
-  font-weight: 700;
-  color: var(--muted);
+.row--loading {
+  height: 68px;
+  border-color: transparent;
+  background: linear-gradient(100deg, var(--surface-2) 30%, var(--surface) 50%, var(--surface-2) 70%);
+  background-size: 220% 100%;
+  animation: shimmer 1.3s linear infinite;
 }
 
 .row__text {
@@ -148,11 +359,11 @@
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  font-weight: 600;
+  font-weight: 650;
 }
 
-/* Unread as a mark rather than a number: a count invites doing arithmetic
-   about how popular you are, which is the habit this app is built to avoid. */
+/* Unread as a mark rather than a number: a count invites arithmetic about how
+   popular you are, which is the habit this app exists to break. */
 .row__dot {
   width: 7px;
   height: 7px;
@@ -168,38 +379,216 @@
   white-space: nowrap;
 }
 
-.row__time {
+.row__meta {
   flex: 0 0 auto;
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
 }
 
-/* ---- the one opening message -------------------------------------------- */
+/* ---- avatars ------------------------------------------------------------- */
 
-/* The 560px cap belongs to the takeover on the pair page, where the card is
-   alone on a full-width stage. Here it has a section label above it and has
-   to line up with it. */
-.inbox .unlocked {
-  max-width: none;
-  margin-block: 0;
+.avatar {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-2);
 }
 
-.unlocked__note {
+.avatar--sm {
+  width: 34px;
+  height: 34px;
+}
+
+.avatar--blank {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
   color: var(--muted);
-  font-size: var(--t--1);
-  margin-bottom: var(--s-3);
 }
 
-.unlocked__form {
+/* ---- empty --------------------------------------------------------------- */
+
+.blank {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-3);
+  text-align: center;
+  max-width: 420px;
+  margin: var(--s-6) auto;
+  padding: var(--s-6) var(--s-5);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+}
+
+.blank__blot {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: rgba(0, 63, 182, 0.765);
+}
+
+.blank .btn {
+  margin-top: var(--s-2);
+}
+
+/* ---- the sheet ----------------------------------------------------------- */
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 14, 21, 0.45);
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.sheet.is-open .sheet__scrim {
+  opacity: 1;
+}
+
+.sheet__panel {
+  position: relative;
+  width: 100%;
+  max-width: 620px;
+  max-height: 92dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -12px 48px rgba(8, 14, 21, 0.24);
+  transform: translateY(16px);
+  opacity: 0;
+  transition:
+    transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.2s ease;
+}
+
+.sheet.is-open .sheet__panel {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.sheet__panel:focus {
+  outline: none;
+}
+
+.sheet__grip {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 4px;
+  margin: var(--s-3) auto var(--s-1);
+  border-radius: 2px;
+  background: var(--rule-strong);
+}
+
+.sheet__close {
+  position: absolute;
+  top: var(--s-3);
+  right: var(--s-3);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.sheet__close:hover {
+  background: var(--rule);
+  color: var(--ink);
+}
+
+.sheet__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--s-4) var(--s-5) max(var(--s-5), env(safe-area-inset-bottom));
+}
+
+@media (min-width: 700px) {
+  .sheet {
+    align-items: center;
+    padding: var(--s-5);
+  }
+
+  .sheet__panel {
+    max-height: 86dvh;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-lg);
+    transform: translateY(10px) scale(0.985);
+  }
+
+  .sheet.is-open .sheet__panel {
+    transform: translateY(0) scale(1);
+  }
+
+  .sheet__grip {
+    display: none;
+  }
+
+  .sheet__body {
+    padding-top: var(--s-6);
+  }
+}
+
+/* ---- a revealed profile, inside the sheet -------------------------------- */
+
+.revealed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-4);
+}
+
+/* Capped rather than full-bleed. A 3:4 photo across the sheet fills the whole
+   viewport, so the name, the prompts and the thing you came here to do all
+   start below the fold and the sheet reads as a dead end. */
+.revealed .reveal__gallery img {
+  height: min(44dvh, 420px);
+  width: auto;
+  max-width: 100%;
+}
+
+.revealed .reveal__gallery:has(img:only-child) {
+  justify-content: center;
+}
+
+.compose {
   display: grid;
   gap: var(--s-3);
-  margin-top: var(--s-4);
   padding-top: var(--s-4);
   border-top: 1px solid var(--rule);
 }
 
-.unlocked__input {
+.compose__note {
+  color: var(--muted);
+  font-size: var(--t--1);
+}
+
+.compose__input {
   width: 100%;
   padding: var(--s-3);
   background: var(--surface-2);
@@ -208,37 +597,42 @@
   color: var(--ink);
   font: inherit;
   resize: vertical;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
-.unlocked__actions {
-  display: grid;
-  gap: var(--s-2);
-  margin-top: var(--s-4);
+.compose__input:focus {
+  outline: none;
+  border-color: var(--blue);
+  background: var(--surface);
 }
 
-.unlocked__actions .btn:not(.btn--ghost),
-.unlocked__form .btn {
+/* Red is the decline colour on this screen, so it cannot also be the colour
+   of reaching out. */
+.compose__send {
   background: var(--blue);
 }
 
-.unlocked__actions .btn:not(.btn--ghost):hover:not(:disabled),
-.unlocked__form .btn:hover:not(:disabled) {
+.compose__send:hover:not(:disabled) {
   background: var(--blue-strong);
 }
 
-/* ---- a thread ------------------------------------------------------------ */
+/* ---- a thread, inside the sheet ------------------------------------------ */
 
 .thread {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s-4);
   align-content: start;
 }
 
 .thread__bar {
   display: flex;
-  align-items: baseline;
-  gap: var(--s-4);
-  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--rule);
 }
 
 .thread__name {
@@ -246,36 +640,70 @@
   font-weight: 700;
 }
 
-/* Sized by its contents, capped rather than filled: a conversation with one
-   message in it must not be stretched to the height of one with fifty. */
+/* Sized by its contents and capped, never filled: a conversation with one
+   message must not be stretched to the height of one with fifty. */
 .thread__log {
   display: grid;
-  gap: var(--s-2);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-3);
   align-content: start;
+  max-height: 46dvh;
   overflow-y: auto;
-  max-height: 58dvh;
+  overscroll-behavior: contain;
   padding-right: var(--s-1);
 }
 
+.bubble-row {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+}
+
+.bubble-row--mine {
+  justify-items: end;
+}
+
+.bubble-row.is-fresh {
+  animation: pop 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+}
+
 .bubble {
-  max-width: min(80%, 44ch);
+  max-width: min(82%, 46ch);
   padding: var(--s-3) var(--s-4);
-  border-radius: var(--radius-lg);
+  border-radius: 14px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
-.bubble--mine {
-  justify-self: end;
+.bubble-row--mine .bubble {
   background: var(--blue);
   color: var(--on-accent);
+  border-bottom-right-radius: 4px;
 }
 
-.bubble--theirs {
-  justify-self: start;
-  background: var(--surface);
-  border: 1px solid var(--rule);
+.bubble-row--theirs .bubble {
+  background: var(--surface-2);
   color: var(--ink);
+  border-bottom-left-radius: 4px;
+}
+
+.bubble__time {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  padding-inline: var(--s-2);
+}
+
+.thread__foot {
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--rule);
 }
 
 .thread__form {
@@ -286,22 +714,40 @@
 .thread__input {
   flex: 1;
   min-width: 0;
-  padding: var(--s-3);
-  background: var(--surface);
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface-2);
   border: 1px solid var(--rule);
-  border-radius: var(--radius);
+  border-radius: 999px;
   color: var(--ink);
   font: inherit;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.thread__input:focus {
+  outline: none;
+  border-color: var(--blue);
+  background: var(--surface);
+}
+
+.thread__send {
+  flex: 0 0 auto;
+  width: var(--tap);
+  min-height: var(--tap);
+  padding: 0;
+  border-radius: 50%;
+  background: var(--blue);
+  font-size: 1.1rem;
+}
+
+.thread__send:hover:not(:disabled) {
+  background: var(--blue-strong);
 }
 
 .thread__waiting {
   color: var(--muted);
   font-size: var(--t--1);
   font-style: italic;
-}
-
-@media (min-width: 700px) {
-  .inbox__body {
-    padding-inline: var(--s-5);
-  }
+  text-align: center;
 }

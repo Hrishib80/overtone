@@ -6,10 +6,11 @@ Never point this at anything but a local database.
 
     python scripts/seed_demo.py --scope demo
 
-The pool is sized so the unlock is actually reachable: clearing the Wilson
-bound takes seven comparisons of one person, and a pair may only be shown
-once, so a segment needs at least eight people in it before the mechanic can
-be demonstrated at all.
+The pool is sized so the unlock is reachable *in both directions*. Clearing
+the Wilson bound takes seven comparisons of one person and a pair may only be
+shown once, so a viewer needs at least eight candidates before any unlock is
+possible. Ten and ten: a lopsided pool silently makes the whole mechanic
+unreachable for whoever is on the short side of it.
 
 Portraits are generated as SVG files under MEDIA_ROOT and served by the app's
 own /media_uploads mount, so the demo needs no network and no object storage.
@@ -71,12 +72,16 @@ PEOPLE = [
     ("Nandini", "woman", ["man"], "History", "Finding the one good bench on campus."),
     ("Ishita", "woman", ["man"], "Chemistry", "Making tea for people who didn't ask."),
     ("Rhea", "woman", ["man"], "Mathematics", "Losing at carrom with dignity."),
-    ("Tara", "woman", ["man"], "Journalism", "Asking one question too many."),
-    ("Lakshmi", "woman", ["man"], "Statistics", "Being early and pretending I wasn't."),
     ("Ravi", "man", ["woman"], "Mechanical", "Fixing things that were working fine."),
     ("Arjun", "man", ["woman"], "Law", "Losing arguments on purpose to see what happens."),
     ("Karthik", "man", ["woman"], "Electrical", "Naming every stray dog on the road."),
     ("Vikram", "man", ["woman"], "Philosophy", "Being wrong out loud, quickly."),
+    ("Rohit", "man", ["woman"], "Civil", "Reading plaques nobody else stops for."),
+    ("Aman", "man", ["woman"], "Statistics", "Keeping a spreadsheet I will never show you."),
+    ("Nikhil", "man", ["woman"], "Music", "Humming the wrong harmony, confidently."),
+    ("Siddharth", "man", ["woman"], "Geology", "Picking up rocks and putting them in my bag."),
+    ("Varun", "man", ["woman"], "Biology", "Talking to plants. They have not replied."),
+    ("Dev", "man", ["woman"], "Linguistics", "Correcting nobody, silently, forever."),
 ]
 
 PROMPTS = [

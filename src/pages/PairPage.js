@@ -9,13 +9,18 @@ import { toast } from '../utils/toast.js';
 
    Round 1 is two photographs and nothing else — the choice has to be a snap
    judgement or it measures something different. Round 2 is the same two
-   people, days later, with everything showing. The UI difference between
-   them is the mechanic, so the two layouts are deliberately not shared.
+   people, days later, with everything showing. The UI difference between them
+   is the mechanic, so the two layouts are deliberately not shared.
 
    The third state is the unlock, and it interrupts on purpose. It is the one
-   moment the loop pays off, and sliding it into a corner as a badge would
-   make a page of photographs out of the only thing here that is about a
-   person. */
+   moment the loop pays off, and sliding it into a corner as a badge would make
+   a page of photographs out of the only thing here that is about a person.
+
+   Motion does one job on this screen: answering the tap. A choice that
+   produces no visible result before the next pair appears feels like the app
+   swallowed it. */
+
+const SETTLE_MS = 360; // long enough to read the result of a tap, short enough not to wait on it
 
 export default {
   async render() {
@@ -30,7 +35,10 @@ export default {
 
     const foot = createElement('footer', { className: 'pairs__foot' });
     const inboxLink = createElement('button', { className: 'pairs__inbox', type: 'button' }, 'Your people');
+    const inboxDot = createElement('span', { className: 'pairs__badge', hidden: 'hidden' });
+    inboxLink.append(inboxDot);
     inboxLink.addEventListener('click', () => router.go('/inbox'));
+
     const signOut = createElement('button', { className: 'pairs__signout', type: 'button' }, 'Sign out');
     signOut.addEventListener('click', () => {
       store.signOut();
@@ -41,9 +49,30 @@ export default {
     page.append(header, stage, foot);
 
     let busy = false;
+    /** subject id -> the element that represents them in the current pair. */
+    let choices = new Map();
 
     function setStage(...nodes) {
       stage.replaceChildren(...nodes);
+    }
+
+    function say(text) {
+      if (sub.textContent === text) return;
+      sub.textContent = text;
+      sub.classList.remove('is-new');
+      void sub.offsetWidth; // restart the animation rather than skip it
+      sub.classList.add('is-new');
+    }
+
+    /** Once on mount: is there anything worth going to the inbox for? */
+    async function checkInbox() {
+      try {
+        const inbox = await api.getInbox();
+        const waiting = inbox.requests.length + inbox.unlocked.length;
+        inboxDot.hidden = waiting === 0;
+      } catch {
+        inboxDot.hidden = true; // never let a badge be the reason a page errors
+      }
     }
 
     function skeleton() {
@@ -71,14 +100,25 @@ export default {
     /* ---- the unlock ---- */
     function renderUnlock(subject, connectionId) {
       heading.textContent = connectionId ? 'You both did' : 'You keep choosing them';
-      sub.textContent = connectionId
-        ? 'They picked you too, so there is nothing to ask. Go and talk.'
-        : 'Enough times that it is not chance. Here they are, properly.';
+      say(
+        connectionId
+          ? 'They picked you too, so there is nothing to ask. Go and talk.'
+          : 'Enough times that it is not chance. Here they are, properly.'
+      );
 
       const card = createElement('article', { className: 'reveal reveal--blue unlocked' });
-      card.append(...profileBody(subject));
 
-      const actions = createElement('div', { className: 'unlocked__actions' });
+      // The contents arrive in sequence rather than all at once: the profile
+      // is the reward, and a reward that simply appears reads as a page load.
+      profileBody(subject).forEach((node, i) => {
+        node.classList.add('rise');
+        node.style.setProperty('--rise-delay', `${140 + i * 70}ms`);
+        card.append(node);
+      });
+
+      const actions = createElement('div', { className: 'unlocked__actions rise' });
+      actions.style.setProperty('--rise-delay', '460ms');
+
       const write = createElement(
         'button',
         { className: 'btn btn--full', type: 'button' },
@@ -88,22 +128,36 @@ export default {
 
       const later = createElement('button', { className: 'btn btn--ghost btn--full', type: 'button' }, 'Later');
       later.addEventListener('click', () => {
-        sub.textContent = 'They are waiting in Your people, whenever you want.';
+        say('They are waiting in Your people, whenever you want.');
         load();
       });
 
       actions.append(write, later);
       card.append(actions);
+
+      inboxDot.hidden = false;
       setStage(card);
       window.scrollTo({ top: 0 });
+    }
+
+    /** The tap, answered: the picked one holds, the other stands down. */
+    function settle(chosenId) {
+      for (const [id, element] of choices) {
+        element.classList.add(id === chosenId ? 'is-picked' : 'is-passed');
+        element.disabled = true;
+      }
     }
 
     async function choose(pairing, subjectId) {
       if (busy) return;
       busy = true;
+      settle(subjectId);
 
       try {
-        const result = await api.decidePair(pairing.id, subjectId);
+        const [result] = await Promise.all([
+          api.decidePair(pairing.id, subjectId),
+          new Promise((resolve) => setTimeout(resolve, SETTLE_MS)),
+        ]);
 
         if (result.unlocked) {
           busy = false;
@@ -114,21 +168,23 @@ export default {
         if (result.round_two_scheduled) {
           // Said once, quietly — the delay is the point, and a viewer who
           // knows a second look is coming treats the first one differently.
-          sub.textContent = "You'll see these two again in a few days, with everything showing.";
+          say("You'll see these two again in a few days, with everything showing.");
         }
         await load();
       } catch (error) {
         toast(error.message, { error: true });
         busy = false;
+        await load();
       }
     }
 
     /* ---- round 1: two photos, nothing else ---- */
     function renderRoundOne(pairing) {
       heading.textContent = 'Who would you rather?';
-      if (!sub.textContent) sub.textContent = 'Go with your gut.';
+      if (!sub.textContent) say('Go with your gut.');
 
       const row = createElement('div', { className: 'choice-row' });
+      choices = new Map();
 
       pairing.subjects.forEach((subject, index) => {
         const button = createElement('button', {
@@ -136,6 +192,8 @@ export default {
           type: 'button',
           'aria-label': index === 0 ? 'Choose the person on the left' : 'Choose the person on the right',
         });
+        button.style.setProperty('--rise-delay', `${index * 60}ms`);
+        button.classList.add('rise');
 
         if (subject.photo_url) {
           button.append(createElement('img', { src: subject.photo_url, alt: '' }));
@@ -144,6 +202,7 @@ export default {
         }
 
         button.addEventListener('click', () => choose(pairing, subject.id));
+        choices.set(subject.id, button);
         row.append(button);
       });
 
@@ -153,8 +212,9 @@ export default {
     /* ---- round 2: the same two, revealed ---- */
     function profileCard(subject, index, pairing) {
       const card = createElement('article', {
-        className: `reveal ${index === 0 ? 'reveal--red' : 'reveal--blue'}`,
+        className: `reveal rise ${index === 0 ? 'reveal--red' : 'reveal--blue'}`,
       });
+      card.style.setProperty('--rise-delay', `${index * 80}ms`);
       card.append(...profileBody(subject));
 
       const pick = createElement(
@@ -165,14 +225,16 @@ export default {
       pick.addEventListener('click', () => choose(pairing, subject.id));
 
       card.append(pick);
+      choices.set(subject.id, card);
       return card;
     }
 
     function renderRoundTwo(pairing) {
       heading.textContent = 'You saw these two before';
-      sub.textContent = 'Now with everything showing. Take your time.';
+      say('Now with everything showing. Take your time.');
 
       const row = createElement('div', { className: 'reveal-row' });
+      choices = new Map();
       pairing.subjects.forEach((subject, index) => row.append(profileCard(subject, index, pairing)));
       setStage(row);
     }
@@ -185,7 +247,7 @@ export default {
         const { pair } = await api.getNextPair();
         if (!pair) {
           heading.textContent = 'Overtone';
-          sub.textContent = '';
+          say('');
           setStage(emptyState());
           return;
         }
@@ -202,7 +264,10 @@ export default {
       }
     }
 
-    page.mounted = () => load();
+    page.mounted = () => {
+      load();
+      checkInbox();
+    };
     return page;
   },
 };

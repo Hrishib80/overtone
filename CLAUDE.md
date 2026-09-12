@@ -63,7 +63,7 @@ alembic upgrade head
 python scripts/manage.py seed                     # 81 prompts, 38 genders, 30 sexualities
 python scripts/manage.py scope-create --slug demo --name "Demo University" \
     --domain demo.edu --cap man=600 --cap woman=600
-python scripts/seed_demo.py --scope demo          # 16 fake people, local SVG portraits
+python scripts/seed_demo.py --scope demo          # 20 fake people, local SVG portraits
 
 python -m uvicorn backend.app:app --port 8000     # API
 npx vite --port 5173                              # frontend
@@ -71,8 +71,11 @@ python worker.py                                  # background jobs (optional lo
 ```
 
 Demo accounts: `ravi@demo.edu`, `aditi@demo.edu`, … password `overtone2026`.
-Sixteen people, not eight: an unlock costs seven comparisons of one person and
-a pair may only be shown once, so a smaller pool cannot reach one at all.
+Ten women and ten men, deliberately balanced: an unlock costs seven
+comparisons of one person and a pair may only be shown once, so a viewer needs
+at least eight candidates before any unlock is reachable. A lopsided pool
+silently makes the whole mechanic impossible for whoever is on the short side
+— twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
 pytest                       # 243 tests, no network, no models needed
@@ -350,6 +353,15 @@ Each of these cost real debugging time. Do not reintroduce them.
 - **Accent fills need `--on-accent`, not `#fff`.** The palette inverts between
   themes — dark red becomes light red — so hardcoded white heads for
   white-on-pale in dark mode.
+- **Grid blowout: a `white-space: nowrap` element sets a floor under every
+  track above it.** `.row__preview` made the whole inbox 522px wide inside a
+  390px phone — `min-width: 0` on the flex child is not enough, because the
+  *grid tracks* still size to min-content. Every grid in a column that
+  contains truncating text needs `grid-template-columns: minmax(0, 1fr)`.
+- **`.choice` also matches the loading skeleton.** A Playwright
+  `wait_for_selector('.choice')` returns on the placeholder and the click
+  lands on a `div` with no handler, which looks exactly like a broken feature.
+  Target `button.choice`.
 
 ---
 
@@ -397,6 +409,15 @@ Each of these cost real debugging time. Do not reintroduce them.
 ### Phase 06 — Design system
 - Carry the two-pole palette through remaining surfaces.
 - Art-directed landing page.
+- The onboarding flow has had none of the motion or spacing work the pair view
+  and inbox got; it is the last screen still on the phase-01 treatment.
+
+**Motion conventions, now that there are some.** Entrances are 260–440ms on
+`cubic-bezier(0.22, 1, 0.36, 1)`, staggered 40–70ms per item via a `.rise`
+class and a `--rise-delay` custom property. Sheets use
+`cubic-bezier(0.16, 1, 0.3, 1)` over 340ms. `prefers-reduced-motion` is handled
+once, globally, in `base.css` — do not repeat the guard per rule. Motion answers
+an action or introduces content; nothing here loops or decorates.
 
 ### Phase 07 — Calibration & launch
 - Seed enough profiles that pairs exist — **cold start is the central risk**. A
@@ -425,7 +446,12 @@ Each of these cost real debugging time. Do not reintroduce them.
   opened. Mail sender first, then this.
 - **`/inbox` holds the thread in page state, not the URL**, so a conversation
   cannot be linked to or restored by reload. The router matches exact paths and
-  has no params; add them when a second surface needs them.
+  has no params; add them when a second surface needs them. Profiles and
+  threads open in a sheet (`src/components/sheet.js`) rather than a route for
+  the same reason.
+- **The inbox badge on the pair view costs a full `/api/connections` call** on
+  mount, which serialises every unlocked profile just to decide whether to show
+  a 7px dot. Wants a cheap count endpoint before launch.
 
 ---
 

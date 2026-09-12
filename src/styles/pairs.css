@@ -9,6 +9,7 @@
   min-height: 100dvh;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr);
   background: var(--ground);
 }
 
@@ -30,6 +31,31 @@
   min-height: 1.4em; /* reserve the line so the layout doesn't jump */
 }
 
+/* Only when the words actually change, so the subtitle is not permanently
+   drawing attention to itself. */
+.pairs__sub.is-new {
+  animation: sub-in 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes sub-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.rise {
+  animation: rise 0.44s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: var(--rise-delay, 0ms);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
 .pairs__stage {
   display: grid;
   align-content: center;
@@ -49,6 +75,7 @@
 }
 
 .pairs__inbox {
+  position: relative;
   border: 0;
   background: none;
   color: var(--ink);
@@ -57,6 +84,25 @@
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* A mark, never a count — the same rule the inbox rows follow. */
+.pairs__badge {
+  position: absolute;
+  top: -2px;
+  right: -9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: badge-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@keyframes badge-in {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
 }
 
 .pairs__signout {
@@ -118,6 +164,39 @@
 
 .choice:active {
   transform: translateY(0) scale(0.985);
+}
+
+/* The result of a tap, held just long enough to read. Without it the next
+   pair simply appears and the choice feels swallowed. */
+.choice.is-picked {
+  transform: translateY(-4px) scale(1.015);
+  box-shadow: var(--shadow-lift);
+  cursor: default;
+}
+
+.choice--red.is-picked {
+  border-color: var(--red);
+}
+
+.choice--blue.is-picked {
+  border-color: var(--blue);
+}
+
+.choice.is-passed {
+  opacity: 0.32;
+  transform: scale(0.96);
+  filter: saturate(0.35);
+  cursor: default;
+}
+
+.reveal.is-passed {
+  opacity: 0.4;
+  transition: opacity 0.24s ease;
+}
+
+.reveal.is-picked {
+  border-color: var(--blue);
+  box-shadow: var(--shadow-lift);
 }
 
 .choice--loading {
@@ -238,7 +317,7 @@
 
 .reveal__facts {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
   gap: var(--s-2) var(--s-4);
   margin-bottom: var(--s-5);
   font-size: var(--t--1);
@@ -321,6 +400,35 @@
   margin-inline: auto;
   align-self: start;
   margin-block: var(--s-4) var(--s-6);
+  animation: unlock-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* The card arrives, rather than replacing what was there. Its contents then
+   stagger in behind it (see PairPage), so the profile assembles instead of
+   landing whole. */
+@keyframes unlock-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+}
+
+.unlocked__actions {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-5);
+  padding-top: var(--s-5);
+  border-top: 1px solid var(--rule);
+}
+
+/* Red is the decline colour once you reach the inbox, so it cannot also be
+   the colour of reaching out. */
+.unlocked__actions .btn:not(.btn--ghost) {
+  background: var(--blue);
+}
+
+.unlocked__actions .btn:not(.btn--ghost):hover:not(:disabled) {
+  background: var(--blue-strong);
 }
 
 /* The partial width exists so a second photo peeks past the edge and the
