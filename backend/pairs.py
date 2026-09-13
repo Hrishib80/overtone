@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.auth import current_user
+from backend.auth import require_member
 from backend.database import PairRound, User, get_db
 from backend.logging_config import get_logger
 from backend.pairing import next_pair, record_decision
@@ -48,7 +48,7 @@ class DecideRequest(BaseModel):
 
 @router.get("/next")
 async def get_next_pair(
-    user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
+    user: User = Depends(require_member), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     pairing = await next_pair(db, user)
     await db.commit()
@@ -62,7 +62,7 @@ async def get_next_pair(
 async def decide_pair(
     pairing_id: str,
     req: DecideRequest,
-    user: User = Depends(current_user),
+    user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     decision = await record_decision(db, user, pairing_id, req.chosen_id)

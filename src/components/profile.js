@@ -40,10 +40,33 @@ const VITALS = [
   ['smoking', 'Smokes', pretty],
 ];
 
-export function gallery(subject) {
+/**
+ * @param {object} subject
+ * @param {(photo: {id: string, url: string}) => void} [onReportPhoto]
+ *   when given, each photo carries its own quiet report control — "this one",
+ *   rather than a complaint about the person that a reviewer cannot act on.
+ */
+export function gallery(subject, onReportPhoto) {
   const wrap = createElement('div', { className: 'reveal__gallery' });
-  for (const url of subject.photos || []) {
-    wrap.append(createElement('img', { src: url, alt: '', loading: 'lazy' }));
+  for (const photo of subject.photos || []) {
+    const frame = createElement('div', { className: 'reveal__frame' });
+    frame.append(createElement('img', { src: photo.url, alt: '', loading: 'lazy' }));
+
+    if (onReportPhoto) {
+      const flag = createElement('button', {
+        className: 'reveal__flag',
+        type: 'button',
+        title: 'Report this photo',
+        'aria-label': 'Report this photo',
+      });
+      flag.textContent = '⚑';
+      flag.addEventListener('click', (event) => {
+        event.stopPropagation();
+        onReportPhoto(photo);
+      });
+      frame.append(flag);
+    }
+    wrap.append(frame);
   }
   if (!(subject.photos || []).length) {
     wrap.append(createElement('div', { className: 'choice__missing' }, 'No photo'));
@@ -103,6 +126,11 @@ export function prompts(subject) {
 }
 
 /** Everything about a person, in one card. Callers append their own action. */
-export function profileBody(subject) {
-  return [gallery(subject), nameLine(subject), facts(subject), prompts(subject)];
+export function profileBody(subject, { onReportPhoto } = {}) {
+  return [
+    gallery(subject, onReportPhoto),
+    nameLine(subject),
+    facts(subject),
+    prompts(subject),
+  ];
 }

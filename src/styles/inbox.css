@@ -804,6 +804,18 @@
   max-width: 46ch;
 }
 
+/* When the report is about one photo rather than the person, this line is the
+   difference between the two and has to read before the reasons do. */
+.safety__about {
+  margin-bottom: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--radius);
+  background: var(--blue-wash);
+  color: var(--blue);
+  font-size: var(--t--1);
+  font-weight: 650;
+}
+
 /* Blocking is the one that needs no reason, so it is the one that gets the
    red. Reporting asks for more and sits under it. */
 .safety__block .btn {

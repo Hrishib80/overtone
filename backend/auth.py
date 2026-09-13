@@ -22,7 +22,7 @@ from backend.database import (
     get_db,
     utcnow,
 )
-from backend.errors import AppError, Conflict, NotAuthenticated, NotFound
+from backend.errors import AppError, Conflict, NotAuthenticated, NotAuthorized, NotFound
 from backend.logging_config import get_logger
 from backend.ratelimit import (
     LOGIN_PER_ACCOUNT,
@@ -76,6 +76,25 @@ async def current_user(user_id: str = Depends(require_auth), db: AsyncSession = 
     user = await db.get(User, user_id)
     if user is None or user.deleted_at is not None:
         raise NotAuthenticated("Account not found.")
+    return user
+
+
+async def require_member(user: User = Depends(current_user)) -> User:
+    """Everything a suspended account may not do — which is everything that
+    involves another person.
+
+    Applied as a *router* dependency rather than per route, so a route added
+    later to one of those routers cannot forget it. The two routers it is
+    deliberately absent from are `auth` and `account`: a suspended person can
+    still sign in, see why, withdraw their consent and delete themselves.
+    Suspension is a judgement about how they treated other people; it is not
+    a forfeit of what is theirs.
+    """
+    if user.status == UserStatus.suspended:
+        raise NotAuthorized(
+            "Your account is suspended. You can still delete it, or take back "
+            "permission to analyse your photos, from your settings."
+        )
     return user
 
 
@@ -286,4 +305,7 @@ async def get_me(user: User = Depends(current_user)) -> dict[str, object]:
         "status": user.status,
         "email_verified": user.email_verified_at is not None,
         "avatar_url": user.avatar_url,
+        # So the app knows whether to offer the queue. It is a hint for the
+        # interface only — every moderation route checks the column itself.
+        "is_reviewer": user.is_reviewer,
     }

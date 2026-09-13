@@ -12,7 +12,7 @@ making architectural changes.
 
 ## Current state
 
-Phases 00–04 are complete, phase 05 is under way. **315 tests passing**, lint clean,
+Phases 00–04 are complete, phase 05 is under way. **333 tests passing**, lint clean,
 migration round-trips, frontend builds, and the whole loop — pair, unlock,
 request, reply — has been driven end to end in a browser at phone and laptop
 width.
@@ -76,8 +76,9 @@ silently makes the whole mechanic impossible for whoever is on the short side
 — twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
-pytest                       # 287 tests, no network, no models needed
+pytest                       # 333 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
+python scripts/manage.py reviewer --email you@example.com   # open the review queue
 python scripts/check_storage.py  # why uploads are or are not working
 ruff check . && ruff format --check .
 alembic check                # fails if models drifted from migrations
@@ -306,6 +307,51 @@ Blocking also has to do three things that are not obvious:
 wants the other, and two separate flows at the moment somebody is upset is how
 people end up doing neither. Reports are kept after review: one dismissed
 report means little, four from unrelated people is the pattern.
+
+### Review, and suspension
+
+**Reporting without review is a promise the product does not keep.** The rows
+accumulate, nobody opens them, and the person who reported learns that
+reporting does nothing. `backend/moderation.py` is the other half, and three
+choices shape it:
+
+**The unit of review is the person, not the report.** Four reports about one
+account are one question — is this person doing the thing? — and answering it
+four times would mean answering the fourth with the first three already
+decided. So a reviewer acts on a subject and every open report about them
+closes in that act. The queue is ordered by open count, not arrival: four
+unrelated reports is the pattern worth seeing first. Age breaks ties so
+nothing sits forever.
+
+**A note is required on every decision, dismissals included.** A dismissal
+with no reason recorded is indistinguishable from nobody having looked, which
+is the exact failure the queue exists to end. `reviewer_id` is stored too — "a
+human reads it" is only a real promise if the human is named.
+
+**Reviewers are made from the command line** (`manage.py reviewer --email`).
+There is deliberately no endpoint: the one account that can suspend other
+people must not be reachable from a surface an attacker already holds a
+session on. `test_nothing_over_http_can_make_a_reviewer` pins that. A
+non-reviewer gets **404, not 403** — that a moderation surface exists at this
+path is itself information.
+
+**Suspension removes somebody from other people's experience, not from their
+own data.** A suspended account still signs in, still reaches settings, still
+withdraws biometric consent and still deletes itself. Suspension is a
+judgement about conduct towards others; it is not a forfeit of what is theirs.
+That is why `require_member` guards pairs, inbox, media, safety and profile but
+deliberately **not** `auth` and `account`.
+
+**A suspension can be lifted.** One that could not would be one nobody makes on
+thin evidence — or on good evidence, since the cost of being wrong is
+identical either way.
+
+**A report can name one photo or one answer** (`subject_media_id`,
+`subject_prompt_id`), verified at write time to belong to the person being
+reported. A report attached to the wrong evidence would be worse than one
+attached to none. Reporting a single photo does **not** block by default, the
+way reporting a person does — flagging an image is a smaller act than cutting
+somebody off.
 
 ### Rate limits
 
@@ -600,6 +646,17 @@ Each of these cost real debugging time. Do not reintroduce them.
   existed in both `pairs.css` and `inbox.css` with different durations, so
   whichever `index.html` loaded last silently won for both. Shared motion now
   lives once, in `base.css`.
+- **A "did suspension work" test passes trivially if the viewer is a
+  reporter.** Reporting blocks by default, so the reported account is already
+  invisible to whoever reported them — the assertion holds with the feature
+  removed. Check through a bystander, and assert the subject *was* visible
+  first. Same shape as any before/after test: without the before, the after
+  proves nothing.
+- **`server_default` left on an added column makes `alembic check` fail
+  forever.** It is needed to make a column NOT NULL on a table with rows, and
+  the model declares only a Python-side default, so the schema and the models
+  disagree from then on. Add it, then drop it in the same
+  `batch_alter_table` (`alter_column(..., server_default=None)`).
 - **Demo accounts wear out.** A viewer sees each pair once, so repeated
   Playwright runs exhaust a pool and the next run looks like a broken app.
   Reseed before trusting a failure.
@@ -634,21 +691,22 @@ Each of these cost real debugging time. Do not reintroduce them.
 ### Phase 05 — Trust & safety
 
 Done: **block / report** (`backend/safety.py`), **rate limits**
-(`backend/ratelimit.py`), and **biometric consent + account erasure**
-(`backend/privacy.py`, `backend/account.py`, `src/pages/SettingsPage.js`), all
-with the reasoning recorded above.
+(`backend/ratelimit.py`), **biometric consent + account erasure**
+(`backend/privacy.py`, `backend/account.py`, `src/pages/SettingsPage.js`), and
+the **review queue with suspension** (`backend/moderation.py`,
+`src/pages/ReviewPage.js`) — all with the reasoning recorded above.
 
 Still open:
-- Real image moderation (nudity, minors, faces) + human review queue. The face
-  gate today only checks "exactly one clear face". `Report` rows exist and are
-  queryable by `(status, created_at)`, but **there is no reviewer UI** — a
-  report today goes into a table nobody opens.
+- **Automated image moderation.** The gate still only asks "is there exactly
+  one clear face"; nudity and minor detection are not wired. What exists now
+  is the *human* half — a reported photo reaches a reviewer who can see it and
+  remove it — so the gap is detection, not process.
 - Redis for chat fanout and presence. The chat socket exists
   (`backend/signaling.py`) but is per-process and the frontend does not use it
   yet — the thread view polls on open instead.
-- **Nothing reports a photo or a prompt specifically.** The report is about a
-  person; `context` carries a connection id when there is one, so a reviewer
-  can see the conversation but not "this image".
+- **Nothing tells a reporter what happened.** Deliberate for now (see the note
+  in `safety.py` about why an outcome is not disclosed), but "a person reads
+  every report" is a claim the reporter currently has to take on faith.
 
 ### Phase 06 — Design system
 - Art-directed landing page. Everything else now shares the sky and the motion
@@ -732,7 +790,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 315 and rising; every bug found gets a regression
+- **Tests are the contract.** 333 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.
@@ -753,6 +811,8 @@ an action or introduces content; nothing here loops or decorates.
   | `affinity.py` | — | the unlock: counts, classification, permanence |
   | `preference.py` | — | the online face model and its tilt |
   | `profile_view.py` | — | the two serializers, shared by pairs and inbox |
+  | `safety.py` | `safety.py` | blocking and reporting — one file, not enough of either for two |
+  | `moderation.py` | `moderation.py` | the review queue, suspension, reinstatement |
 
 - `backend/rating.py` and `backend/preference.py` stay pure — no session, no
   clock. That is what lets the arithmetic be tested precisely and the wiring be

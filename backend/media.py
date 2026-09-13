@@ -20,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend import jobs, storage
-from backend.auth import current_user
+from backend.auth import require_member
 from backend.config import settings
 from backend.database import (
     MediaAsset,
@@ -116,7 +116,7 @@ def _limit_for(kind: MediaKind) -> tuple[dict[str, str], int]:
 @router.post("/upload-url", status_code=201)
 async def create_upload_url(
     req: UploadRequest,
-    user: User = Depends(current_user),
+    user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     # Issuing a signed URL is the cheap half of an upload and the half an
@@ -218,7 +218,7 @@ async def receive_local_upload(
 async def confirm_upload(
     asset_id: str,
     req: ConfirmRequest,
-    user: User = Depends(current_user),
+    user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     asset = await db.get(MediaAsset, asset_id)
@@ -302,7 +302,7 @@ async def confirm_upload(
 
 @router.get("")
 async def list_media(
-    user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
+    user: User = Depends(require_member), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     # Tickets that were issued and never used are intents, not media. Listing
     # them meant the grid drew a blank tile for every time somebody opened the
@@ -346,7 +346,7 @@ async def list_media(
 @router.delete("/{asset_id}", status_code=204)
 async def delete_media(
     asset_id: str,
-    user: User = Depends(current_user),
+    user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     asset = await db.get(MediaAsset, asset_id)
@@ -398,7 +398,7 @@ async def delete_media(
 
 @router.get("/status")
 async def processing_status(
-    user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
+    user: User = Depends(require_member), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     """What the worker still owes this user *on their media*. Lets onboarding
     show progress instead of a spinner with no end.

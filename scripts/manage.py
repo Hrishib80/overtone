@@ -2,6 +2,8 @@
 
     python scripts/manage.py seed
     python scripts/manage.py stats
+    python scripts/manage.py reviewer --email someone@example.com
+    python scripts/manage.py reviewer --email someone@example.com --revoke
 
 `seed` is idempotent — it upserts reference rows, so re-running after editing a
 seed file applies only what changed.
@@ -70,9 +72,32 @@ async def cmd_stats(_args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_reviewer(args: argparse.Namespace) -> int:
+    """Grant or revoke the moderation queue.
+
+    Only here, never over HTTP. The account that can suspend other people is
+    exactly the one an attacker with a stolen session would want, so the way
+    to become one requires a shell on the machine holding the database.
+    """
+    email = args.email.strip().lower()
+    async with AsyncSessionLocal() as db:
+        user = (await db.execute(select(User).where(User.email == email))).scalars().first()
+        if user is None:
+            print(f"No account for {email}.", file=sys.stderr)
+            return 1
+
+        user.is_reviewer = not args.revoke
+        await db.commit()
+
+    verb = "no longer a reviewer" if args.revoke else "is now a reviewer"
+    print(f"  {email} {verb}")
+    return 0
+
+
 COMMANDS = {
     "seed": cmd_seed,
     "stats": cmd_stats,
+    "reviewer": cmd_reviewer,
 }
 
 
@@ -84,6 +109,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("seed", help="load reference data (idempotent)")
     sub.add_parser("stats", help="pool size per segment")
+
+    reviewer = sub.add_parser("reviewer", help="grant or revoke the moderation queue")
+    reviewer.add_argument("--email", required=True, help="the account to change")
+    reviewer.add_argument("--revoke", action="store_true", help="take it away instead")
 
     return parser
 

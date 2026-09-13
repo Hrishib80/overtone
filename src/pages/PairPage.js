@@ -1,5 +1,6 @@
 import { createElement } from '../utils/dom.js';
 import { profileBody } from '../components/profile.js';
+import { reportPhoto } from '../components/safety.js';
 import api from '../services/api.js';
 import store from '../services/store.js';
 import router from '../services/router.js';
@@ -52,10 +53,17 @@ export default {
     header.append(mark, heading, sub, who);
 
     function renderSignedIn() {
-      const email = store.getState().me?.email;
+      const me = store.getState().me;
+      const email = me?.email;
       who.replaceChildren();
       if (!email) return;
       who.append('signed in as ', createElement('b', {}, email), ' · ');
+
+      if (me.is_reviewer) {
+        const queue = createElement('button', { className: 'pairs__signout', type: 'button' }, 'review');
+        queue.addEventListener('click', () => router.go('/review'));
+        who.append(queue, ' · ');
+      }
       const settings = createElement(
         'button',
         { className: 'pairs__signout', type: 'button' },
@@ -145,7 +153,9 @@ export default {
 
       // The contents arrive in sequence rather than all at once: the profile
       // is the reward, and a reward that simply appears reads as a page load.
-      profileBody(subject).forEach((node, i) => {
+      profileBody(subject, {
+        onReportPhoto: (photo) => reportPhoto({ subject, photo }),
+      }).forEach((node, i) => {
         node.classList.add('rise');
         node.style.setProperty('--rise-delay', `${140 + i * 70}ms`);
         card.append(node);
@@ -258,7 +268,11 @@ export default {
         className: `reveal rise ${index === 0 ? 'reveal--red' : 'reveal--blue'}`,
       });
       card.style.setProperty('--rise-delay', `${index * 80}ms`);
-      card.append(...profileBody(subject));
+      card.append(
+        ...profileBody(subject, {
+          onReportPhoto: (photo) => reportPhoto({ subject, photo }),
+        })
+      );
 
       const pick = createElement(
         'button',

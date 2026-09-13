@@ -90,6 +90,10 @@ async def full_profile_view(db: AsyncSession, user_id: str) -> dict[str, Any]:
     prompts = []
     for response, prompt in answers:
         entry: dict[str, Any] = {
+            # The answer's own id, not just the question's — reporting needs
+            # to name this person's answer, and `prompt_id` names a question
+            # eighty other people have also answered.
+            "id": response.id,
             "prompt_id": prompt.id,
             "text": prompt.text,
             "kind": response.kind,
@@ -129,7 +133,12 @@ async def full_profile_view(db: AsyncSession, user_id: str) -> dict[str, Any]:
         "id": user_id,
         "display_name": user.display_name if user else None,
         "age": user.age if user else None,
-        "photos": [p.public_url for p in photos],
+        # Objects rather than bare urls, so a viewer can say *which* photo
+        # they are reporting. The id is opaque and the report endpoint checks
+        # it belongs to the person being reported, so exposing it costs
+        # nothing and "one of these is a problem" stops being the only thing
+        # a reviewer can be told.
+        "photos": [{"id": p.id, "url": p.public_url} for p in photos],
         "prompts": prompts,
         "gender_identity": gender_label,
         "sexuality": sexuality_label,

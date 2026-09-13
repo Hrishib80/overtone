@@ -41,9 +41,11 @@ async function reasons() {
  * @param {object} options
  * @param {{id: string, display_name?: string}} options.subject
  * @param {string} [options.context]  a connection id, so a reviewer can see where it happened
+ * @param {{mediaId?: string, promptId?: string, label: string}} [options.about]
+ *   one particular thing rather than the person in general
  * @param {() => void} [options.onDone]  called after the person is gone from view
  */
-export async function openSafety({ subject, context, onDone }) {
+export async function openSafety({ subject, context, about, onDone }) {
   const available = await reasons();
   const name = subject.display_name || 'this person';
 
@@ -94,6 +96,12 @@ export async function openSafety({ subject, context, onDone }) {
         )
       );
 
+      if (about) {
+        // Named before the reasons, because it changes what the rest of the
+        // form means: this is a complaint about one thing, not about a person.
+        form.append(createElement('p', { className: 'safety__about' }, `About: ${about.label}`));
+      }
+
       const list = createElement('div', { className: 'safety__reasons' });
       available.forEach((value, index) => {
         const id = `reason-${subject.id}-${value}`;
@@ -120,7 +128,10 @@ export async function openSafety({ subject, context, onDone }) {
       const alsoBlockId = `also-block-${subject.id}`;
       const alsoBlockRow = createElement('label', { className: 'safety__check', for: alsoBlockId });
       const alsoBlock = createElement('input', { type: 'checkbox', id: alsoBlockId });
-      alsoBlock.checked = true;
+      // Reporting a person means you want them gone. Reporting one photo
+      // often does not — flagging an image is a smaller act than cutting
+      // somebody off, and defaulting it on would make it the same size.
+      alsoBlock.checked = !about;
       alsoBlockRow.append(alsoBlock, createElement('span', {}, `Block ${name} as well`));
 
       const send = createElement(
@@ -139,13 +150,15 @@ export async function openSafety({ subject, context, onDone }) {
               reason: chosen?.value,
               note: note.value,
               context,
+              mediaId: about?.mediaId,
+              promptId: about?.promptId,
               block: alsoBlock.checked,
             }),
           'Thanks — someone will look at this.'
         );
       });
 
-      wrap.append(blockSection, form);
+      wrap.append(...(about ? [form] : [blockSection, form]));
       return wrap;
     },
   });
@@ -162,4 +175,13 @@ export function safetyButton({ subject, context, onDone }) {
   button.textContent = '⋯';
   button.addEventListener('click', () => openSafety({ subject, context, onDone }));
   return button;
+}
+
+/** Report one photo, from wherever it is being shown. */
+export function reportPhoto({ subject, photo, context }) {
+  return openSafety({
+    subject,
+    context,
+    about: { mediaId: photo.id, label: 'this photo' },
+  });
 }

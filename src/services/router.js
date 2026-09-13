@@ -6,6 +6,7 @@ const HOME_FOR_STATUS = {
   pending_verification: '/verify',
   onboarding: '/onboarding',
   active: '/pairs',
+  suspended: '/suspended',
 };
 
 const PUBLIC_ROUTES = new Set(['/', '/join', '/signin']);
@@ -13,11 +14,14 @@ const PUBLIC_ROUTES = new Set(['/', '/join', '/signin']);
 /* Routes an account may visit besides its home. Onboarding stays a funnel —
    these are the places you can only get to once you are through it. */
 const ALSO_ALLOWED = {
-  active: new Set(['/inbox', '/settings']),
+  active: new Set(['/inbox', '/settings', '/review']),
   // Settings is reachable mid-onboarding too, because withdrawing consent and
   // deleting the account are things a half-finished profile must be able to
   // do — being stuck inside a funnel is not a reason to lose that.
   onboarding: new Set(['/settings']),
+  // A suspension removes somebody from other people's experience. It does not
+  // remove their say over their own data, so settings stays open.
+  suspended: new Set(['/settings']),
 };
 
 class Router {
@@ -63,6 +67,10 @@ class Router {
 
     const home = HOME_FOR_STATUS[me.status] || '/';
     if (path === home) return null;
+    // The queue is a hint here and a check on the server: `/api/moderation`
+    // reads the column itself, so this only decides whether the page is worth
+    // rendering, never whether the data comes back.
+    if (path === '/review' && !me.is_reviewer) return home;
     return ALSO_ALLOWED[me.status]?.has(path) ? null : home;
   }
 

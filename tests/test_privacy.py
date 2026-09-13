@@ -370,6 +370,36 @@ async def test_a_report_they_made_outlives_them_without_their_name(client, db_se
 
 
 @pytest.mark.asyncio
+async def test_a_reviewer_who_leaves_takes_their_name_off_their_decisions(client, db_sessionmaker, _a_life):
+    """The decision stays and the decider goes.
+
+    Whoever inherits the queue still needs to read what was decided and why;
+    what they do not need is the name of somebody who has left.
+    """
+    mine, theirs = _a_life["mine"], _a_life["theirs"]
+
+    async with db_sessionmaker() as db:
+        reviewer = await db.get(User, _uid(mine))
+        reviewer.is_reviewer = True
+        await db.commit()
+
+    decided = await client.post(
+        f"/api/moderation/subjects/{_uid(theirs)}/decide",
+        headers=mine["headers"],
+        json={"action": "dismiss", "note": "Looked at it; nothing in it."},
+    )
+    assert decided.status_code == 200, decided.text
+
+    await client.post("/api/account/delete", headers=mine["headers"], json={"password": PASSWORD})
+
+    async with db_sessionmaker() as db:
+        report = (await db.execute(select(Report).where(Report.subject_id == _uid(theirs)))).scalars().first()
+    assert report is not None
+    assert report.reviewer_id is None
+    assert report.reviewer_note == "Looked at it; nothing in it."
+
+
+@pytest.mark.asyncio
 async def test_the_token_stops_working(client, _a_life):
     headers = _a_life["mine"]["headers"]
     await client.post("/api/account/delete", headers=headers, json={"password": PASSWORD})

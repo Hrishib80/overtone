@@ -124,6 +124,11 @@ class UserStatus(enum.StrEnum):
     pending_verification = "pending_verification"
     onboarding = "onboarding"
     active = "active"
+    # Removed from everyone else's experience, but still the owner of their
+    # own data: a suspended account keeps its settings, its right to withdraw
+    # consent and its right to delete itself. Suspension is a decision about
+    # somebody's conduct towards others, not a forfeit of what is theirs.
+    suspended = "suspended"
     deleted = "deleted"
 
 
@@ -214,6 +219,11 @@ class User(Base):
     processing_status = Column(String, nullable=False, default=ProcessingStatus.pending)
     avatar_url = Column(String, nullable=True)
     created_at = Column(UTCDateTime(), default=utcnow, nullable=False)
+
+    # Granted from the command line only. There is deliberately no endpoint
+    # that sets this: the one account able to suspend other people must not be
+    # reachable through the same surface an attacker already has a session on.
+    is_reviewer = Column(Boolean, nullable=False, default=False)
 
     @property
     def age(self) -> int | None:
@@ -713,7 +723,19 @@ class Report(Base):
     # see the message that prompted it rather than guessing.
     context = Column(String, nullable=True)
 
+    # *What* was reported, when it was a particular thing rather than the
+    # person in general. "This photo" and "that answer" are the two reports
+    # somebody actually wants to make about a profile, and a reviewer looking
+    # at six photos cannot act on a report that does not say which one.
+    # SET NULL rather than CASCADE: the report outlives the thing it is about,
+    # because deleting the photo is one of the outcomes.
+    subject_media_id = Column(String, ForeignKey("media_assets.id", ondelete="SET NULL"), nullable=True)
+    subject_prompt_id = Column(String, ForeignKey("prompt_responses.id", ondelete="SET NULL"), nullable=True)
+
     status = Column(String, nullable=False, default=ReportStatus.open)
+    # Who decided. "A human reads it" is only a real promise if the human is
+    # named — a decision nobody is attached to is a decision nobody owns.
+    reviewer_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     reviewed_at = Column(UTCDateTime(), nullable=True)
     reviewer_note = Column(Text, nullable=True)
 

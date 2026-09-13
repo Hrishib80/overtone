@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend import connections
-from backend.auth import current_user
+from backend.auth import require_member
 from backend.database import User, get_db
 from backend.logging_config import get_logger
 from backend.ratelimit import SEND_REQUEST, consume
@@ -38,14 +38,16 @@ class MessageBody(BaseModel):
 
 
 @router.get("")
-async def get_inbox(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+async def get_inbox(
+    user: User = Depends(require_member), db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
     return await connections.inbox(db, user)
 
 
 @router.post("/requests", status_code=201)
 async def create_request(
     body: RequestBody,
-    user: User = Depends(current_user),
+    user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     # Before the work, not after: a refused request should not have created
@@ -68,7 +70,7 @@ async def get_messages(
     connection_id: str,
     limit: int = 50,
     before: str | None = None,
-    user: User = Depends(current_user),
+    user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     connection, rows = await connections.messages(
@@ -86,7 +88,7 @@ async def get_messages(
 async def create_message(
     connection_id: str,
     body: MessageBody,
-    user: User = Depends(current_user),
+    user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     message = await connections.post_message(db, sender=user, connection_id=connection_id, text=body.text)
@@ -98,7 +100,7 @@ async def create_message(
 @router.post("/{connection_id}/decline")
 async def decline_request(
     connection_id: str,
-    user: User = Depends(current_user),
+    user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     connection = await connections.decline(db, user=user, connection_id=connection_id)
@@ -110,7 +112,7 @@ async def decline_request(
 @router.post("/{connection_id}/read")
 async def mark_read(
     connection_id: str,
-    user: User = Depends(current_user),
+    user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, int]:
     count = await connections.mark_read(db, user=user, connection_id=connection_id)

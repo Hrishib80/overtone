@@ -18,7 +18,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend import jobs, options
-from backend.auth import current_user
+from backend.auth import require_member
 from backend.database import (
     GenderIdentity,
     MediaAsset,
@@ -250,7 +250,7 @@ async def get_options(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
 
 @router.get("")
 async def get_profile(
-    user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
+    user: User = Depends(require_member), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     profile = await _get_profile(db, user.id)
     visible_as, interested_in = await _segments(db, user.id)
@@ -289,7 +289,7 @@ async def get_profile(
 @router.patch("")
 async def patch_profile(
     patch: ProfilePatch,
-    user: User = Depends(current_user),
+    user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     profile = await _get_profile(db, user.id)
@@ -330,7 +330,7 @@ async def patch_profile(
 @router.put("/prompts")
 async def set_prompts(
     payload: PromptAnswers,
-    user: User = Depends(current_user),
+    user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     known = {
@@ -440,7 +440,7 @@ async def _completeness(db: AsyncSession, user: User, profile: Profile) -> dict[
 
 @router.post("/submit")
 async def submit_profile(
-    user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
+    user: User = Depends(require_member), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     """Finish onboarding. A complete profile on a verified address is a member —
     there is no cap to clear and no queue to join."""

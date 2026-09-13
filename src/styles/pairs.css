@@ -374,14 +374,57 @@
   scroll-snap-type: x mandatory;
 }
 
-.reveal__gallery img {
+/* The frame exists so the flag has something to sit in; the image keeps the
+   sizing it always had. */
+.reveal__frame {
+  position: relative;
   flex: 0 0 auto;
   width: min(70%, 240px);
   max-width: 100%;
+  scroll-snap-align: start;
+}
+
+.reveal__gallery img {
+  display: block;
+  width: 100%;
   aspect-ratio: 3 / 4;
   object-fit: cover;
   border-radius: var(--radius);
-  scroll-snap-align: start;
+}
+
+/* Present, never prominent — the same stance as the block/report control. It
+   is there when somebody goes looking for it and invisible when they are not,
+   which on a dating app matters: a photo covered in moderation furniture
+   reads as a photo we already suspect. */
+.reveal__flag {
+  position: absolute;
+  top: var(--s-2);
+  right: var(--s-2);
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius);
+  background: rgba(11, 20, 32, 0.45);
+  color: var(--on-accent);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.reveal__frame:hover .reveal__flag,
+.reveal__flag:focus-visible {
+  opacity: 1;
+}
+
+/* No hover on a touch screen, so it is simply always there, quietly. */
+@media (hover: none) {
+  .reveal__flag {
+    opacity: 0.75;
+  }
 }
 
 .reveal__name {

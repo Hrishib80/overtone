@@ -263,6 +263,14 @@ async def erase(db: AsyncSession, user: User) -> dict[str, Any]:
         report.reporter_id = None
     removed["reports_they_made_anonymised"] = len(authored)
 
+    # A reviewer who leaves takes their name off their decisions but not the
+    # decisions themselves. The outcome is what the record is for, and it
+    # still has to be readable by whoever inherits the queue.
+    reviewed = (await db.execute(select(Report).where(Report.reviewer_id == user_id))).scalars().all()
+    for report in reviewed:
+        report.reviewer_id = None
+    removed["reviews_they_made_anonymised"] = len(reviewed)
+
     await db.delete(user)
     await db.flush()
     removed["users"] = 1

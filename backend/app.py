@@ -23,6 +23,7 @@ from backend.errors import register_error_handlers
 from backend.inbox import router as inbox_router
 from backend.logging_config import configure_logging, get_logger, request_id_var
 from backend.media import router as media_router
+from backend.moderation import router as moderation_router
 from backend.pairs import router as pairs_router
 from backend.profile import router as profile_router
 from backend.safety import router as safety_router
@@ -139,6 +140,7 @@ def create_app() -> FastAPI:
     app.include_router(pairs_router)
     app.include_router(inbox_router)
     app.include_router(safety_router)
+    app.include_router(moderation_router)
     app.include_router(signaling_router)
 
     @app.get("/api/health", include_in_schema=False)

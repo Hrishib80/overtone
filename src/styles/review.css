@@ -1,0 +1,324 @@
+/* The review queue.
+
+   A working surface, not a designed one: dense, legible, no motion, nothing
+   competing for attention with the photographs and the words being judged.
+   It borrows the settings screen's shape — sky ground, white cards, one
+   column — so it is recognisably the same app without pretending to be part
+   of the product people signed up for. */
+
+.review {
+  min-height: 100vh;
+  background: var(--sky);
+  padding-bottom: var(--s-8);
+}
+
+.review__head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--sky);
+  border-bottom: 1px solid rgba(0, 48, 140, 0.18);
+}
+
+.review__head-inner {
+  width: min(860px, 100%);
+  margin-inline: auto;
+  padding: var(--s-4) var(--s-5);
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.review__back {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--on-sky-soft);
+  font: inherit;
+  font-size: var(--t--1);
+  font-weight: 600;
+}
+
+.review__back:hover {
+  text-decoration: underline;
+}
+
+.review__title {
+  margin: 0;
+  font-size: var(--t-1);
+  color: var(--on-sky);
+  letter-spacing: -0.02em;
+}
+
+.review__body {
+  width: min(860px, 100%);
+  margin-inline: auto;
+  padding: var(--s-5);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-4);
+}
+
+.review__muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t--1);
+  line-height: 1.5;
+}
+
+.review__section {
+  margin: var(--s-4) 0 var(--s-2);
+  font-size: var(--t--1);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.review__label {
+  font-size: var(--t--1);
+  font-weight: 600;
+}
+
+/* ---- the list ---------------------------------------------------------- */
+
+.review__list,
+.review__empty,
+.review__subject {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  padding: var(--s-4) var(--s-5);
+}
+
+.review__empty {
+  text-align: center;
+  padding-block: var(--s-7);
+}
+
+.review__empty h2 {
+  margin: 0 0 var(--s-2);
+  font-size: var(--t-1);
+}
+
+.review__row {
+  width: 100%;
+  display: grid;
+  /* minmax(0,…) on the text column: the reason line can be long and would
+     otherwise set a floor under the whole row. */
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-3) 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.review__row:first-child {
+  border-top: 0;
+}
+
+.review__row:hover {
+  background: var(--surface-2);
+}
+
+.review__row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.review__row-name {
+  font-weight: 650;
+}
+
+.review__row-why {
+  color: var(--muted);
+  font-size: var(--t--1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review__row-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  font-size: var(--t--1);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.review__count {
+  font-weight: 700;
+  color: var(--red);
+  font-variant-numeric: tabular-nums;
+}
+
+.review__tag {
+  padding: 2px var(--s-2);
+  border-radius: var(--radius);
+  background: var(--warn-wash);
+  color: var(--warn);
+  font-weight: 700;
+}
+
+/* ---- one subject ------------------------------------------------------- */
+
+.review__who {
+  margin-top: var(--s-3);
+}
+
+.review__name {
+  margin: 0 0 2px;
+  font-size: var(--t-2);
+  letter-spacing: -0.02em;
+}
+
+.review__photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+}
+
+.review__photo {
+  position: relative;
+  width: 150px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.review__photo img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+}
+
+/* Selection is what turns "remove a photo" from a question into an action,
+   so it has to be unmistakable rather than tasteful. */
+.review__photo[aria-pressed='true'] {
+  border-color: var(--blue);
+}
+
+.review__photo-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: var(--s-2);
+}
+
+.review__mark {
+  padding: 1px var(--s-2);
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.review__mark.is-flagged {
+  background: var(--red-wash);
+  border-color: var(--red);
+  color: var(--red);
+  font-weight: 700;
+}
+
+.review__answers,
+.review__reports {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-3);
+}
+
+.review__answer,
+.review__report {
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--rule-strong);
+  border-radius: var(--radius);
+  padding: var(--s-3);
+}
+
+.review__answer.is-flagged,
+.review__report.is-open {
+  border-left-color: var(--red);
+}
+
+.review__answer-q {
+  margin: 0 0 2px;
+  font-size: var(--t--1);
+  color: var(--muted);
+}
+
+.review__answer-a,
+.review__report-head {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.review__report-head {
+  font-weight: 650;
+  margin-bottom: 2px;
+}
+
+/* Somebody's words, presented as somebody's words rather than as a finding. */
+.review__quote {
+  margin: var(--s-2) 0 0;
+  padding-left: var(--s-3);
+  border-left: 2px solid var(--rule);
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.review__thread {
+  margin-top: var(--s-3);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-1);
+  max-height: 260px;
+  overflow-y: auto;
+  padding: var(--s-2);
+  background: var(--surface-2);
+  border-radius: var(--radius);
+}
+
+.review__msg {
+  margin: 0;
+  font-size: var(--t--1);
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+/* The reported person's own messages, so a reviewer can tell at a glance who
+   said what without reading names on every line. */
+.review__msg.is-subject {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.review__decide {
+  margin-top: var(--s-5);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.review__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+}

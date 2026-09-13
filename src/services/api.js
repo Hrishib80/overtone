@@ -171,14 +171,37 @@ class Api {
     return this.request('GET', '/api/safety/blocks');
   }
 
-  reportUser(userId, { reason, note, context, block = true }) {
+  reportUser(userId, { reason, note, context, mediaId, promptId, block = true }) {
     return this.request('POST', '/api/safety/reports', {
       user_id: userId,
       reason,
       note: note || null,
       context: context || null,
+      media_id: mediaId || null,
+      prompt_id: promptId || null,
       block,
     });
+  }
+
+  // ---- moderation (reviewers only; the API refuses everyone else) ----
+  getReviewQueue() {
+    return this.request('GET', '/api/moderation/queue');
+  }
+
+  getReviewSubject(userId) {
+    return this.request('GET', `/api/moderation/subjects/${userId}`);
+  }
+
+  decideReport(userId, { action, note, mediaId }) {
+    return this.request('POST', `/api/moderation/subjects/${userId}/decide`, {
+      action,
+      note,
+      media_id: mediaId || null,
+    });
+  }
+
+  reinstate(userId) {
+    return this.request('POST', `/api/moderation/subjects/${userId}/reinstate`);
   }
 }
 

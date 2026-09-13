@@ -29,12 +29,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.auth import current_user
+from backend.auth import require_member
 from backend.database import (
     Affinity,
     Block,
     Connection,
     ConnectionStatus,
+    MediaAsset,
+    PromptResponse,
     Report,
     ReportReason,
     User,
@@ -148,8 +150,17 @@ async def report(
     reason: str,
     note: str | None = None,
     context: str | None = None,
+    media_id: str | None = None,
+    prompt_id: str | None = None,
     also_block: bool = True,
 ) -> Report:
+    """Record a report, optionally about one particular thing.
+
+    `media_id` and `prompt_id` are verified to belong to the person being
+    reported rather than trusted. A reviewer opening a report that points at
+    somebody else's photo would be worse than one that points at nothing —
+    it would be an accusation attached to the wrong evidence.
+    """
     if subject_id == reporter.id:
         raise AppError("You can't report yourself.")
     if reason not in set(ReportReason):
@@ -157,12 +168,23 @@ async def report(
     if await db.get(User, subject_id) is None:
         raise NotFound("That person doesn't exist.")
 
+    if media_id is not None:
+        asset = await db.get(MediaAsset, media_id)
+        if asset is None or asset.user_id != subject_id:
+            raise NotFound("That photo isn't on that profile.")
+    if prompt_id is not None:
+        answer = await db.get(PromptResponse, prompt_id)
+        if answer is None or answer.user_id != subject_id:
+            raise NotFound("That answer isn't on that profile.")
+
     row = Report(
         reporter_id=reporter.id,
         subject_id=subject_id,
         reason=reason,
         note=(note or "").strip()[:MAX_NOTE_LENGTH] or None,
         context=context,
+        subject_media_id=media_id,
+        subject_prompt_id=prompt_id,
     )
     db.add(row)
     await db.flush()
@@ -170,7 +192,13 @@ async def report(
     if also_block:
         await block(db, blocker=reporter, subject_id=subject_id)
 
-    log.info("user_reported", subject_id=subject_id, reason=reason, blocked=also_block)
+    log.info(
+        "user_reported",
+        subject_id=subject_id,
+        reason=reason,
+        blocked=also_block,
+        about="photo" if media_id else "prompt" if prompt_id else "person",
+    )
     return row
 
 
@@ -217,6 +245,10 @@ class ReportBody(BaseModel):
     reason: str
     note: str | None = Field(default=None, max_length=MAX_NOTE_LENGTH)
     context: str | None = None
+    # What specifically, when it is something specific. A reviewer looking at
+    # three photos cannot act on "one of these is a problem".
+    media_id: str | None = None
+    prompt_id: str | None = None
     # Reporting blocks unless the reporter deliberately says otherwise; the
     # form says so rather than leaving it as a surprise either way.
     block: bool = True
@@ -224,7 +256,7 @@ class ReportBody(BaseModel):
 
 @router.get("/blocks")
 async def list_blocks(
-    user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
+    user: User = Depends(require_member), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     """Only the blocks this person made. Being blocked is not disclosed —
     telling someone they have been blocked hands them a reason to find another
@@ -250,7 +282,7 @@ async def list_blocks(
 @router.post("/blocks", status_code=201)
 async def create_block(
     body: BlockBody,
-    user: User = Depends(current_user),
+    user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     await block(db, blocker=user, subject_id=body.user_id)
@@ -262,7 +294,7 @@ async def create_block(
 @router.delete("/blocks/{subject_id}")
 async def remove_block(
     subject_id: str,
-    user: User = Depends(current_user),
+    user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     removed = await unblock(db, blocker=user, subject_id=subject_id)
@@ -273,7 +305,7 @@ async def remove_block(
 @router.post("/reports", status_code=201)
 async def create_report(
     body: ReportBody,
-    user: User = Depends(current_user),
+    user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     await consume(db, REPORT, user.id)
@@ -284,6 +316,8 @@ async def create_report(
         reason=body.reason,
         note=body.note,
         context=body.context,
+        media_id=body.media_id,
+        prompt_id=body.prompt_id,
         also_block=body.block,
     )
     if body.block:

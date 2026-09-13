@@ -1,7 +1,7 @@
 import { createElement, formatTime } from '../utils/dom.js';
 import { profileBody } from '../components/profile.js';
 import { openSheet } from '../components/sheet.js';
-import { safetyButton } from '../components/safety.js';
+import { reportPhoto, safetyButton } from '../components/safety.js';
 import api from '../services/api.js';
 import router from '../services/router.js';
 import { toast } from '../utils/toast.js';
@@ -228,7 +228,12 @@ export default {
               },
             })
           );
-          wrap.append(heading, ...profileBody(subject));
+          wrap.append(
+            heading,
+            ...profileBody(subject, {
+              onReportPhoto: (photo) => reportPhoto({ subject, photo }),
+            })
+          );
 
           const form = createElement('form', { className: 'compose' });
           const input = createElement('textarea', {
@@ -337,7 +342,9 @@ export default {
 
       const photo = subject.photos?.[0];
       if (photo) {
-        card.append(createElement('img', { className: 'card__photo', src: photo, alt: '', loading: 'lazy' }));
+        card.append(
+          createElement('img', { className: 'card__photo', src: photo.url, alt: '', loading: 'lazy' })
+        );
       } else {
         card.append(createElement('div', { className: 'card__photo card__photo--blank' }));
       }

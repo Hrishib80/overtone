@@ -219,7 +219,11 @@ async def test_round_two_reveals_the_full_profile(client, db_sessionmaker, fake_
     assert revealed["display_name"]
     assert revealed["age"] is not None
     assert len(revealed["photos"]) >= 1
+    # Each photo and each answer carries its own id, so a viewer can report
+    # *that one* rather than filing a complaint a reviewer cannot act on.
+    assert all(p["id"] and p["url"] for p in revealed["photos"])
     assert len(revealed["prompts"]) == 4
+    assert all(p["id"] for p in revealed["prompts"])
     written = [p for p in revealed["prompts"] if p["kind"] == "written"]
     voice = [p for p in revealed["prompts"] if p["kind"] == "voice"]
     assert len(written) == 3
