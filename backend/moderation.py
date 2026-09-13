@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend import jobs
 from backend.auth import current_user
 from backend.database import (
     ChatMessage,
@@ -60,6 +61,7 @@ MAX_REVIEWER_NOTE = 2000
 class Action(enum.StrEnum):
     dismiss = "dismiss"  # nothing here; the reports close as dismissed
     remove_photo = "remove_photo"  # one photo goes, the account stays
+    approve_photo = "approve_photo"  # a held photo is fine; let it through
     suspend = "suspend"  # the account stops appearing, and cannot sign in
 
 
@@ -80,7 +82,15 @@ async def require_reviewer(user: User = Depends(current_user)) -> User:
 # ---------------------------------------------------------------------------
 
 
-async def _subject_summary(db: AsyncSession, subject: User, reports: list[Report]) -> dict[str, Any]:
+async def _subject_summary(
+    db: AsyncSession,
+    subject: User,
+    reports: list[Report],
+    held: list[MediaAsset] | None = None,
+) -> dict[str, Any]:
+    held = held or []
+    waiting = [r.created_at for r in reports if r.status == ReportStatus.open]
+    waiting += [p.created_at for p in held]
     return {
         "user": {
             "id": subject.id,
@@ -92,13 +102,14 @@ async def _subject_summary(db: AsyncSession, subject: User, reports: list[Report
         },
         "open_reports": sum(1 for r in reports if r.status == ReportStatus.open),
         "total_reports": len(reports),
+        "held_photos": len(held),
         # The distinct reasons, because "three people said harassment" and
         # "one each of three different things" are not the same signal.
         "reasons": sorted({r.reason for r in reports if r.status == ReportStatus.open}),
-        "oldest_open": min(
-            (r.created_at.isoformat() for r in reports if r.status == ReportStatus.open),
-            default=None,
-        ),
+        # What the machine said, kept apart from what people said — a reviewer
+        # weighs those two differently and should not have to untangle them.
+        "held_reasons": sorted({p.gate_reason for p in held if p.gate_reason}),
+        "oldest_open": min((t.isoformat() for t in waiting if t), default=None),
     }
 
 
@@ -108,7 +119,14 @@ async def read_queue(
     _: User = Depends(require_reviewer),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Everyone with something outstanding, heaviest first."""
+    """Everyone with something outstanding, heaviest first.
+
+    Two sources feed it: people somebody reported, and photos the automatic
+    screening was not sure about. One queue rather than two, because it is one
+    job — a reviewer opening a subject wants everything known about them on
+    the screen, and a held photo on an account that also has three reports is
+    not a separate errand.
+    """
     wanted = list(ReportStatus) if include_closed else [ReportStatus.open]
     rows = (
         (await db.execute(select(Report).where(Report.status.in_(wanted)).order_by(Report.created_at.desc())))
@@ -120,16 +138,41 @@ async def read_queue(
     for row in rows:
         by_subject.setdefault(row.subject_id, []).append(row)
 
+    waiting_photos = (
+        (
+            await db.execute(
+                select(MediaAsset)
+                .where(MediaAsset.status == MediaStatus.held)
+                .order_by(MediaAsset.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    held_by_subject: dict[str, list[MediaAsset]] = {}
+    for photo in waiting_photos:
+        held_by_subject.setdefault(photo.user_id, []).append(photo)
+
     out = []
-    for subject_id, reports in by_subject.items():
+    for subject_id in dict.fromkeys([*by_subject, *held_by_subject]):
         subject = await db.get(User, subject_id)
         if subject is None:
             # The account deleted itself while its reports were open. Nothing
             # left to review, and the rows go with it.
             continue
-        out.append(await _subject_summary(db, subject, reports))
+        out.append(
+            await _subject_summary(
+                db,
+                subject,
+                by_subject.get(subject_id, []),
+                held_by_subject.get(subject_id, []),
+            )
+        )
 
-    out.sort(key=lambda s: (-s["open_reports"], s["oldest_open"] or ""))
+    # A held photo is one piece of work and so is a report, so they add. An
+    # account with three reports outranking one held photo is the order a
+    # reviewer would have chosen anyway.
+    out.sort(key=lambda s: (-(s["open_reports"] + s["held_photos"]), s["oldest_open"] or ""))
     return {"subjects": out}
 
 
@@ -230,6 +273,11 @@ async def read_subject(
                 "url": photo.public_url,
                 "status": photo.status,
                 "gate_reason": photo.gate_reason,
+                # What the machine actually saw. A verdict with no working
+                # shown is not something a person can second-guess, which is
+                # the only reason they were asked.
+                "screen_detail": photo.screen_detail,
+                "review_approved": photo.review_approved,
                 "is_primary": photo.is_primary,
             }
             for photo in photos
@@ -328,22 +376,53 @@ async def decide(
         .scalars()
         .all()
     )
-    if not open_reports:
+    held_photos = (
+        (
+            await db.execute(
+                select(MediaAsset)
+                .where(MediaAsset.user_id == user_id)
+                .where(MediaAsset.status == MediaStatus.held)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # A held photo is work outstanding even with no report behind it — that is
+    # the whole point of the machine putting things in this queue.
+    if not open_reports and not held_photos:
         raise AppError("There is nothing open about this account.")
 
     outcome: dict[str, Any] = {"action": body.action}
 
-    if body.action == Action.remove_photo:
+    if body.action in (Action.remove_photo, Action.approve_photo):
         if not body.media_id:
             raise AppError("Say which photo.")
         photo = await db.get(MediaAsset, body.media_id)
         if photo is None or photo.user_id != user_id or photo.kind != MediaKind.photo:
             raise NotFound("That photo isn't on this account.")
 
-        photo.status = MediaStatus.rejected
-        photo.gate_reason = "removed_by_review"
-        await _reelect_primary(db, user_id)
-        outcome["removed_photo"] = photo.id
+        if body.action == Action.remove_photo:
+            photo.status = MediaStatus.rejected
+            photo.gate_reason = "removed_by_review"
+            await _reelect_primary(db, user_id)
+            outcome["removed_photo"] = photo.id
+        else:
+            if photo.status != MediaStatus.held:
+                raise AppError("That photo isn't waiting on anyone.")
+            # `review_approved` is what stops the next automatic pass putting
+            # it straight back in the queue. The job then does the rest —
+            # electing a primary and embedding — rather than this handler
+            # half-doing the worker's work with none of the model available.
+            photo.review_approved = True
+            photo.status = MediaStatus.uploaded
+            photo.gate_reason = None
+            await jobs.enqueue(
+                db,
+                jobs.JobKind.process_photo,
+                {"asset_id": photo.id},
+                subject_id=user_id,
+            )
+            outcome["approved_photo"] = photo.id
 
     elif body.action == Action.suspend:
         subject.status = UserStatus.suspended
@@ -366,6 +445,7 @@ async def decide(
         reports_closed=len(open_reports),
     )
     outcome["reports_closed"] = len(open_reports)
+    outcome["held_photos"] = len(held_photos)
     return outcome
 
 

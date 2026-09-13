@@ -51,6 +51,13 @@ export const GATE_REASONS = {
   unreadable_image: "We couldn't read that file.",
   consent_withdrawn: 'You withdrew permission to read faces while this was uploading.',
   too_large: 'That file is too large.',
+  // Screening. The wording avoids accusing anybody: the machine was unsure,
+  // and a person is looking — which is what actually happened.
+  explicit_content: "That photo can't go on a profile.",
+  possible_explicit_content: 'Someone is checking that photo.',
+  possibly_underage: 'Someone is checking that photo.',
+  screening_failed: 'Someone is checking that photo.',
+  removed_by_review: 'That photo was removed after review.',
 };
 
 export function gateMessage(reason) {

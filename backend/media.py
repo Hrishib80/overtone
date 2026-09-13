@@ -71,7 +71,11 @@ class ConfirmRequest(BaseModel):
 # A ticket that was issued and never uploaded to is not a photo. Counting
 # one would let an abandoned ticket eat a slot, and would let the
 # last-photo guard pass while the only real photo was being deleted.
-REAL_PHOTO_STATES = (MediaStatus.uploaded, MediaStatus.processed)
+#
+# `held` counts: it is the owner's photo, sitting in their grid, waiting on a
+# reviewer. Leaving it out would let them upload a fourth while it waits, and
+# would tell them they have no photos when they can see one.
+REAL_PHOTO_STATES = (MediaStatus.uploaded, MediaStatus.processed, MediaStatus.held)
 
 
 async def _forget_object(key: str) -> None:

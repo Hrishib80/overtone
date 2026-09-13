@@ -12,7 +12,7 @@ making architectural changes.
 
 ## Current state
 
-Phases 00–04 are complete, phase 05 is under way. **344 tests passing**, lint clean,
+Phases 00–04 are complete, phase 05 is under way. **366 tests passing**, lint clean,
 migration round-trips, frontend builds, and the whole loop — pair, unlock,
 request, reply — has been driven end to end in a browser at phone and laptop
 width.
@@ -76,7 +76,7 @@ silently makes the whole mechanic impossible for whoever is on the short side
 — twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
-pytest                       # 344 tests, no network, no models needed
+pytest                       # 366 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
 python scripts/manage.py reviewer --email you@example.com   # open the review queue
 python scripts/check_storage.py  # why uploads are or are not working
@@ -465,6 +465,50 @@ given, or a client could type on somebody else's behalf. It expires on the
 receiving side rather than waiting for a "stopped" event, so a peer who closes
 the tab mid-word does not leave the dots up for ever.
 
+### Screening photos
+
+**Three outcomes, not two.** A classifier with only pass and fail either
+rejects real people's photos or lets things through, because the middle of its
+score distribution is genuinely ambiguous — a beach photo, a breastfeeding
+photo, a painting, a low-cut top at an unlucky angle. The third outcome is
+`held`: nobody but the owner sees it, and a person looks. Having that state is
+what lets the automatic thresholds sit where they are honest rather than where
+they are least embarrassing, and it is the reason the review queue was built
+first.
+
+**Nothing is ever rejected on an age estimate.** buffalo_l's genderage head is
+routinely out by several years and the two errors do not cost the same: a
+wrongly-rejected nineteen-year-old is told by a machine that they look like a
+child with nowhere to argue, while a wrongly-held one waits. Under-age photos
+are held, always. The threshold is 21 rather than 18 because the point of the
+number is to catch what deserves a second look, not to be a birthday check.
+
+**"Did not look" and "looked and found nothing" must never collapse.** A
+detector that was supposed to run and failed *holds*; a deployment with no
+detector at all *passes*. `screener().screens` is the flag that separates
+them, and `StubScreener` reports `False` rather than clean results — a
+moderation system that treats an absence as approval is worse than one that is
+visibly switched off. This is how moderation quietly stops working: the model
+errors, everything sails through, and nothing in the product looks different.
+
+**The policy is pure and lives in `backend/screening.py`**, away from the
+model, for the same reason `rating.py` is pure — the thresholds are the part
+that will be argued about and tuned on real photos, and they should be
+readable and testable without loading a network.
+
+**Age costs nothing extra.** buffalo_l already carries a genderage head and
+the face pass already runs, so the estimate arrives on `FaceResult`. Loading a
+second model to answer the same question would be another network in memory
+for nothing. Only nudity needs its own detector (NudeNet — ONNX, CPU, and it
+returns *labelled* boxes, which is what a reviewer reads, rather than one
+opaque "nsfw" number).
+
+**`review_approved` is sticky.** A human decision must not be overturnable by
+the next automatic pass, or the queue becomes a thing reviewers do twice.
+Approving sets it, returns the photo to `uploaded` and re-enqueues the job —
+the worker elects the primary and embeds, because that is where the model
+lives.
+
 ### Identity model
 
 Three separate fields, and the separation is load-bearing:
@@ -742,15 +786,20 @@ Done: **block / report** (`backend/safety.py`), **rate limits**
 (`backend/ratelimit.py`), **biometric consent + account erasure**
 (`backend/privacy.py`, `backend/account.py`, `src/pages/SettingsPage.js`), the
 **review queue with suspension** (`backend/moderation.py`,
-`src/pages/ReviewPage.js`), and **live chat** (`backend/bus.py`,
-`backend/signaling.py`, `src/services/live.js`) — all with the reasoning
-recorded above.
+`src/pages/ReviewPage.js`), **live chat** (`backend/bus.py`,
+`backend/signaling.py`, `src/services/live.js`) and **automatic photo
+screening** (`backend/screening.py`, `backend/ml/screen.py`) — all with the
+reasoning recorded above.
+
+**Phase 05 is complete.** What is left below is tuning and the things that
+were always the next phase's.
 
 Still open:
-- **Automated image moderation.** The gate still only asks "is there exactly
-  one clear face"; nudity and minor detection are not wired. What exists now
-  is the *human* half — a reported photo reaches a reviewer who can see it and
-  remove it — so the gap is detection, not process.
+- **Screening is untested against real photos.** The thresholds in
+  `backend/screening.py` are reasoned, not measured: nobody has run a few
+  hundred real profile photos through NudeNet and looked at what got held.
+  Expect the hold rate to be the first thing that needs tuning, and expect it
+  to be too high rather than too low.
 - **Nothing notifies anybody outside the app.** No email, no push. The inbox
   is live now, but only while it is open.
 - **Nothing tells a reporter what happened.** Deliberate for now (see the note
@@ -842,7 +891,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 344 and rising; every bug found gets a regression
+- **Tests are the contract.** 366 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.
@@ -859,6 +908,7 @@ an action or introduces content; nothing here loops or decorates.
   | `pairing.py` | `pairs.py` | generation, serve/decide, round scheduling |
   | `connections.py` | `inbox.py` | requests, replies, declines, the inbox |
   | `bus.py` | `signaling.py` | fan-out between processes; the chat socket |
+  | `screening.py` (pure) | — | what to do about what the detectors found |
   | `rating.py` (pure) | — | Glicko-2 and the Wilson interval, no database |
   | `rating_service.py` | — | the only thing touching both maths and SQL |
   | `affinity.py` | — | the unlock: counts, classification, permanence |
@@ -867,8 +917,8 @@ an action or introduces content; nothing here loops or decorates.
   | `safety.py` | `safety.py` | blocking and reporting — one file, not enough of either for two |
   | `moderation.py` | `moderation.py` | the review queue, suspension, reinstatement |
 
-- `backend/rating.py` and `backend/preference.py` stay pure — no session, no
-  clock. That is what lets the arithmetic be tested precisely and the wiring be
+- `backend/rating.py`, `backend/preference.py` and `backend/screening.py` stay
+  pure — no session, no clock, no model. That is what lets the arithmetic be tested precisely and the wiring be
   tested separately.
 - Never commit `.env` or `*.db`. Both are gitignored; verify staging anyway.
 - **Stage explicit paths, not `git add -A`.** It swept a favicon and its

@@ -472,6 +472,14 @@
   letter-spacing: 0.02em;
 }
 
+/* Waiting on a person, not live. The amber says "pending" without saying
+   "problem" — the photo may well be fine, and the owner has done nothing
+   wrong by uploading it. */
+.photo-tile__badge--wait {
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+
 /* Sit over the foot of the photo rather than under it: the tiles are a fixed
    aspect ratio and a row of buttons beneath each one would push the grid into
    a second screen on a phone. */

@@ -27,11 +27,31 @@ const REASON_LABELS = {
   other: 'Something else',
 };
 
+/* action, label, hint, and whether it is one of the ones that hurts.
+
+   Approving is the safe, common answer and must not wear the same red as
+   Suspend — three identical red buttons make the reviewer read the labels
+   every time, which is exactly when a tired person clicks the wrong one. */
 const ACTIONS = [
-  ['dismiss', 'Dismiss', 'Nothing here. The reports close, the account is untouched.'],
-  ['remove_photo', 'Remove a photo', 'One photo goes. Pick it above first.'],
-  ['suspend', 'Suspend', 'They stop appearing for anyone. Reversible.'],
+  ['dismiss', 'Dismiss', 'Nothing here. The reports close, the account is untouched.', 'quiet'],
+  ['approve_photo', 'Approve the photo', 'The held photo is fine. Pick it above first.', 'good'],
+  ['remove_photo', 'Remove a photo', 'One photo goes. Pick it above first.', 'grave'],
+  ['suspend', 'Suspend', 'They stop appearing for anyone. Reversible.', 'grave'],
 ];
+
+const BUTTON_CLASS = {
+  quiet: 'btn btn--ghost',
+  good: 'btn btn--blue',
+  grave: 'btn',
+};
+
+/* What the machine said, in the reviewer's language. The queue mixes two
+   sources — people, and the screener — and they read differently. */
+const HELD_REASONS = {
+  possible_explicit_content: 'Possibly explicit',
+  possibly_underage: 'Possibly under 18',
+  screening_failed: 'Screening did not finish',
+};
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '');
 
@@ -85,17 +105,21 @@ export default {
           createElement(
             'span',
             { className: 'review__row-why' },
-            entry.reasons.map((r) => REASON_LABELS[r] || r).join(' · ')
+            [
+              ...entry.reasons.map((r) => REASON_LABELS[r] || r),
+              ...(entry.held_reasons || []).map((r) => HELD_REASONS[r] || r),
+            ].join(' · ')
           )
         );
 
         const right = createElement('div', { className: 'review__row-meta' });
+        // Reports and held photos are both work, but they are not the same
+        // work — a reviewer chooses differently knowing which it is.
+        const counts = [];
+        if (entry.open_reports) counts.push(`${entry.open_reports} reported`);
+        if (entry.held_photos) counts.push(`${entry.held_photos} held`);
         right.append(
-          createElement(
-            'span',
-            { className: 'review__count' },
-            `${entry.open_reports} open`
-          ),
+          createElement('span', { className: 'review__count' }, counts.join(' · ')),
           createElement('span', { className: 'review__since' }, when(entry.oldest_open))
         );
         if (entry.user.status === 'suspended') {
@@ -164,10 +188,23 @@ export default {
         if (reportedPhotos.has(photo.id)) {
           marks.append(createElement('span', { className: 'review__mark is-flagged' }, 'reported'));
         }
-        if (photo.status === 'rejected') {
+        if (photo.status === 'held') {
+          marks.append(
+            createElement(
+              'span',
+              { className: 'review__mark is-flagged' },
+              HELD_REASONS[photo.gate_reason] || 'held'
+            )
+          );
+        } else if (photo.status === 'rejected') {
           marks.append(
             createElement('span', { className: 'review__mark' }, photo.gate_reason || 'rejected')
           );
+        }
+        // The machine's working, shown rather than summarised. A verdict
+        // nobody can second-guess is not one worth asking a person about.
+        if (photo.screen_detail) {
+          marks.append(createElement('span', { className: 'review__mark' }, photo.screen_detail));
         }
         if (photo.is_primary) {
           marks.append(createElement('span', { className: 'review__mark' }, 'shown in pairs'));
@@ -248,10 +285,13 @@ export default {
         }
         reports.append(card);
       }
-      wrap.append(createElement('h3', { className: 'review__section' }, 'Reports'), reports);
+      if (detail.reports.length) {
+        wrap.append(createElement('h3', { className: 'review__section' }, 'Reports'), reports);
+      }
 
       // ---- deciding ----
       const openCount = detail.reports.filter((r) => r.status === 'open').length;
+      const heldCount = detail.photos.filter((p) => p.status === 'held').length;
       const actions = createElement('div', { className: 'review__decide' });
 
       const note = createElement('textarea', {
@@ -264,7 +304,7 @@ export default {
 
       function renderActions() {
         actions.replaceChildren();
-        if (!openCount) {
+        if (!openCount && !heldCount) {
           actions.append(
             createElement('p', { className: 'review__muted' }, 'Nothing open about this account.')
           );
@@ -272,26 +312,28 @@ export default {
           return;
         }
 
+        const outstanding = [];
+        if (openCount) outstanding.push(`${openCount} report${openCount === 1 ? '' : 's'}`);
+        if (heldCount) outstanding.push(`${heldCount} held photo${heldCount === 1 ? '' : 's'}`);
+
         actions.append(
-          createElement(
-            'h3',
-            { className: 'review__section' },
-            `Close ${openCount} report${openCount === 1 ? '' : 's'}`
-          ),
+          createElement('h3', { className: 'review__section' }, `Decide · ${outstanding.join(', ')}`),
           createElement('label', { className: 'review__label', for: 'reviewer-note' }, 'Your note'),
           note
         );
 
         const row = createElement('div', { className: 'review__buttons' });
-        for (const [action, label, hint] of ACTIONS) {
-          const needsPhoto = action === 'remove_photo' && !selectedPhoto;
+        for (const [action, label, hint, weight] of ACTIONS) {
+          // Dismiss closes reports. With none open it would close nothing and
+          // leave the held photo exactly where it was, so it is not offered.
+          if (action === 'dismiss' && !openCount) continue;
+          if (action === 'approve_photo' && !heldCount) continue;
+
+          const needsPhoto =
+            (action === 'remove_photo' || action === 'approve_photo') && !selectedPhoto;
           const button = createElement(
             'button',
-            {
-              className: action === 'dismiss' ? 'btn btn--ghost' : 'btn',
-              type: 'button',
-              title: hint,
-            },
+            { className: BUTTON_CLASS[weight], type: 'button', title: hint },
             label
           );
           button.disabled = needsPhoto;
@@ -333,7 +375,8 @@ export default {
           await api.decideReport(userId, {
             action,
             note: note.value.trim(),
-            mediaId: action === 'remove_photo' ? selectedPhoto : null,
+            mediaId:
+              action === 'remove_photo' || action === 'approve_photo' ? selectedPhoto : null,
           });
         } catch (error) {
           toast(error.message, { error: true });

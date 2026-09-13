@@ -313,6 +313,9 @@ export default {
         photos = media
           .filter((m) => m.kind === 'photo' && m.status !== 'rejected')
           .sort((a, b) => Number(b.is_primary) - Number(a.is_primary));
+        // The first tile means "this is the one people compare", so a photo
+        // still being checked must not sit there wearing that meaning.
+        photos.sort((a, b) => Number(a.status === 'held') - Number(b.status === 'held'));
       } catch {
         photos = [];
       }
@@ -325,7 +328,14 @@ export default {
         tile.append(createElement('img', { src: photo.url, alt: '' }));
       }
 
-      if (index === 0) {
+      // A held photo is not shown to anyone yet, so saying it is the one
+      // people compare would be wrong — and leaving it unmarked would let
+      // somebody finish onboarding believing a photo is live when it is not.
+      if (photo.status === 'held') {
+        tile.append(
+          createElement('span', { className: 'photo-tile__badge photo-tile__badge--wait' }, 'Being checked')
+        );
+      } else if (index === 0) {
         tile.append(createElement('span', { className: 'photo-tile__badge' }, 'Shown in pairs'));
       }
 

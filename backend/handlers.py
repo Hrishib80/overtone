@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend import mail, ml, storage
+from backend import mail, ml, screening, storage
 from backend.database import (
     MediaAsset,
     MediaKind,
@@ -39,11 +39,14 @@ async def _embedding_row(db: AsyncSession, user_id: str) -> ProfileEmbedding:
 
 
 async def process_photo(db: AsyncSession, payload: dict[str, Any]) -> None:
-    """Gate the photo, then embed the face.
+    """Gate the photo, screen it, then embed the face.
 
-    The gate is not moderation — it only asks whether there is exactly one
-    clear face to embed. Nudity and minor detection arrive with the review
-    queue; until then no photo is visible to anyone but its owner.
+    Two separate questions in that order. The *gate* asks whether there is
+    exactly one clear face to embed — a quality check, and a rejection there
+    is the person's to fix. *Screening* asks whether the photo should be
+    shown at all, and its middle answer is neither yes nor no: see
+    `backend/screening.py` for why a third outcome is what makes the
+    thresholds honest.
     """
     asset = await db.get(MediaAsset, payload["asset_id"])
     if asset is None or asset.status == MediaStatus.rejected:
@@ -77,6 +80,30 @@ async def process_photo(db: AsyncSession, payload: dict[str, Any]) -> None:
         await db.commit()
         log.info("photo_rejected", asset_id=asset.id, reason=result.reason)
         return
+
+    # Screening, and the three outcomes it can produce. Skipped entirely for
+    # a photo a person has already approved: a human decision must not be
+    # overturnable by a later automatic pass, or the queue becomes a thing
+    # reviewers do twice.
+    if not asset.review_approved:
+        screen = ml.screener()
+        found = screen.screen(image) if screen.screens else None
+        call = screening.decide(result, found)
+
+        if call.verdict != screening.Verdict.passed:
+            asset.status = (
+                MediaStatus.held if call.verdict == screening.Verdict.held else MediaStatus.rejected
+            )
+            asset.gate_reason = call.reason
+            asset.screen_detail = call.detail
+            await db.commit()
+            log.info(
+                "photo_screened",
+                asset_id=asset.id,
+                verdict=str(call.verdict),
+                reason=call.reason,
+            )
+            return
 
     asset.status = MediaStatus.processed
     asset.gate_reason = None

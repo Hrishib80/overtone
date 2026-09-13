@@ -68,6 +68,9 @@ class FaceEncoder(Encoder):
             face_count=1,
             box=(x1, y1, x2, y2),
             det_score=float(face.det_score),
+            # buffalo_l carries a genderage model, so this is already computed
+            # by the time we get here. Absent from a pack without one.
+            age=float(face.age) if getattr(face, "age", None) is not None else None,
         )
 
 

@@ -28,6 +28,7 @@ from backend.ml.base import (
     Transcript,
 )
 from backend.ml.face import FaceEncoder, StubFaceEncoder
+from backend.ml.screen import NudityScreener, StubScreener
 from backend.ml.stt import SarvamTranscriber, StubTranscriber
 from backend.ml.text import StubTextEncoder, TextEncoder
 from backend.ml.voice import StubVoiceEncoder, VoiceEncoder
@@ -40,6 +41,7 @@ __all__ = [
     "ModelUnavailable",
     "Transcript",
     "face_encoder",
+    "screener",
     "text_encoder",
     "transcriber",
     "voice_encoder",
@@ -85,6 +87,19 @@ def text_encoder():
 
 
 @lru_cache(maxsize=1)
+def screener():
+    """The explicit-content detector, or a stand-in that says it is not one.
+
+    `_pick` on purpose, so this follows the same rule as the encoders — but
+    the stand-in reports `screens = False` rather than clean results, so a
+    deployment without a detector holds nothing and approves nothing. The
+    difference between "looked and found nothing" and "did not look" is the
+    whole of moderation's credibility.
+    """
+    return _pick(NudityScreener, StubScreener, "screen")
+
+
+@lru_cache(maxsize=1)
 def transcriber():
     if settings.is_test or not settings.real_models_enabled:
         return StubTranscriber()
@@ -107,4 +122,5 @@ def model_status() -> dict[str, str]:
         "voice": type(voice_encoder()).__name__,
         "text": type(text_encoder()).__name__,
         "stt": type(transcriber()).__name__,
+        "screen": type(screener()).__name__,
     }

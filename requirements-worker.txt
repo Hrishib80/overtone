@@ -8,6 +8,12 @@ insightface>=0.7.3
 onnxruntime>=1.17.0
 Pillow>=10.0.0
 
+# Explicit-content detection. ONNX, runs on the same CPU as everything else,
+# and returns labelled boxes rather than one opaque "nsfw" score — the labels
+# are what a reviewer reads. Age estimation is NOT here: buffalo_l already
+# carries a genderage head, so it comes out of the face pass for free.
+nudenet>=3.4.0
+
 # Speaker embedding — voice timbre, language-independent
 speechbrain>=1.0.0
 torchaudio>=2.2.0

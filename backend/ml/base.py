@@ -49,6 +49,23 @@ class FaceResult:
     face_count: int = 0
     box: tuple[int, int, int, int] | None = None
     det_score: float = 0.0
+    # Estimated age, from the genderage model that ships inside buffalo_l —
+    # so it costs nothing extra, the detection pass already ran. `None` when
+    # the pack has no estimator. It is an *estimate* and routinely out by
+    # several years; see backend/screening.py for why nothing is ever
+    # rejected on it.
+    age: float | None = None
+
+
+@dataclass(slots=True)
+class NudityResult:
+    """What an explicit-content detector found, if it ran at all."""
+
+    ran: bool = False
+    # Highest score among the classes that mean exposed genitalia, breasts or
+    # buttocks. 0.0 when nothing matched.
+    score: float = 0.0
+    labels: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

@@ -352,6 +352,11 @@ class MediaStatus(enum.StrEnum):
     pending_upload = "pending_upload"  # signed URL issued, bytes not confirmed
     uploaded = "uploaded"  # bytes present, not yet processed
     processed = "processed"  # passed the gate and embedded
+    # Automatic screening was not sure. Nobody but the owner sees it, and it
+    # waits for a person — the third outcome that lets the thresholds in
+    # backend/screening.py sit where they are honest rather than where they
+    # are least embarrassing.
+    held = "held"
     rejected = "rejected"  # failed the gate; see gate_reason
 
 
@@ -382,6 +387,13 @@ class MediaAsset(Base):
     gate_reason = Column(String, nullable=True)
     face_count = Column(Integer, nullable=True)
     det_score = Column(Float, nullable=True)
+    # What the machine saw, in words, kept for whoever has to decide about it.
+    # A verdict with no working shown is not reviewable.
+    screen_detail = Column(String, nullable=True)
+    # A person looked and said yes. Sticky on purpose: a later automatic pass
+    # must not be able to overturn a human decision, or the queue becomes a
+    # thing reviewers do twice.
+    review_approved = Column(Boolean, nullable=False, default=False)
 
     created_at = Column(UTCDateTime(), nullable=False, default=utcnow)
     processed_at = Column(UTCDateTime(), nullable=True)
