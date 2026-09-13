@@ -246,13 +246,16 @@ export default {
 
       const F = options.fields || {};
 
-      aboutCard.replaceChildren(
-        createElement('h2', { className: 'edit__title' }, 'You'),
-        createElement(
-          'p',
-          { className: 'people__muted' },
-          'Your identity is shown as you write it. What you appear in, and what you see, are separate.'
-        ),
+      /* Two groups, not six fields in a column.
+
+         The four selects are short answers about you and pair naturally two
+         across; the two chip rows are one decision with two halves — who can
+         find you, and who you are shown — and belong together, apart from
+         the rest, because they are the only settings here that change what
+         the app actually does. Run as one undifferentiated list they read as
+         a form to get through rather than as choices to make. */
+      const about = createElement('div', { className: 'edit__pair' });
+      about.append(
         selectRow(
           'gender_identity_id',
           'Gender identity',
@@ -266,9 +269,35 @@ export default {
           (id) => options.sexualities.find((s) => s.id === id)?.label || id
         ),
         selectRow('dating_intentions', 'Dating intentions', F.dating_intentions || []),
-        selectRow('relationship_type', 'Relationship type', F.relationship_types || []),
-        chipRow('visible_as', 'Show me in searches for', F.segments || [], 'Who can come across you.'),
-        chipRow('interested_in', 'I want to see', F.segments || [], 'Whose profiles you are shown.')
+        selectRow('relationship_type', 'Relationship type', F.relationship_types || [])
+      );
+
+      const reach = createElement('div', { className: 'edit__group' });
+      reach.append(
+        createElement('h3', { className: 'edit__group-title' }, 'Who sees who'),
+        createElement(
+          'p',
+          { className: 'edit__group-note' },
+          'Applied both ways. You only ever appear to people you have also asked to see.'
+        ),
+        // An array, not two arguments: `createElement(tag, attrs, children)`
+        // takes three parameters, so a fourth was dropped on the floor and
+        // "I want to see" simply never rendered.
+        createElement('div', { className: 'edit__pair' }, [
+          chipRow('visible_as', 'Show me in searches for', F.segments || [], 'Who can come across you.'),
+          chipRow('interested_in', 'I want to see', F.segments || [], 'Whose profiles you are shown.'),
+        ])
+      );
+
+      aboutCard.replaceChildren(
+        createElement('h2', { className: 'edit__title' }, 'You'),
+        createElement(
+          'p',
+          { className: 'people__muted' },
+          'Your identity is shown exactly as you write it.'
+        ),
+        about,
+        reach
       );
 
       for (const [key, control] of Object.entries(fields)) {

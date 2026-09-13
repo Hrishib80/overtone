@@ -14,23 +14,22 @@
    curve. `prefers-reduced-motion` is handled globally in base.css, so nothing
    below needs to repeat the guard. */
 
+/* Three rows now, not two: the navbar joined the header and the body. With
+   `auto 1fr` the header took the flexible row and stretched to fill the
+   viewport, which put the heading at the top of a screen-high empty band and
+   the conversations at the very bottom. A grid whose track count does not
+   match its children is the quietest way to wreck a page. */
 .inbox {
   min-height: 100dvh;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   grid-template-columns: minmax(0, 1fr);
   background: var(--sky);
   color: var(--on-sky);
 }
 
 .inbox__head {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  padding: var(--s-3) var(--s-4);
-  background: color-mix(in srgb, var(--sky) 82%, transparent);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.34);
+  padding: var(--s-6) var(--s-4) var(--s-2);
 }
 
 .inbox__head-inner {
@@ -387,6 +386,13 @@
   white-space: nowrap;
 }
 
+/* A conversation row is a name and a line of what was said. At 1080px the
+   two sat at opposite ends of a mostly empty card, which reads as a table
+   with a missing column rather than as a message. */
+.rows {
+  max-width: 620px;
+}
+
 .row__meta {
   flex: 0 0 auto;
   color: var(--muted);
@@ -473,6 +479,9 @@
   width: 100%;
   max-width: 620px;
   max-height: 92dvh;
+  /* A conversation in a letterbox reads as a notification, not a place you
+     are going to talk. On anything taller than a phone it gets real room. */
+  min-height: min(72dvh, 560px);
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -537,6 +546,17 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: var(--s-4) var(--s-5) max(var(--s-5), env(safe-area-inset-bottom));
+}
+
+/* Only when it is holding a conversation. A thread has to fill the panel so
+   the composer sits at the bottom of it and the messages stack up from
+   there — otherwise a short conversation leaves the input floating in the
+   middle with white space underneath. Every other sheet still lays its
+   contents out from the top. */
+.sheet__body:has(.thread) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 @media (min-width: 700px) {
@@ -637,6 +657,15 @@
   align-content: start;
 }
 
+.thread {
+  display: flex;
+  flex-direction: column;
+  /* Fills the sheet, so the composer sits at the bottom of the panel rather
+     than wherever the messages happened to end. */
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .thread__bar {
   display: flex;
   align-items: center;
@@ -655,15 +684,28 @@
 
 /* Sized by its contents and capped, never filled: a conversation with one
    message must not be stretched to the height of one with fifty. */
+/* Takes the space the panel has rather than a fixed slice of the viewport.
+   `46dvh` meant a conversation with four messages in it sat in a band half
+   the height of the sheet holding it, with the composer floating in the
+   middle of nowhere underneath. */
 .thread__log {
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--s-3);
-  align-content: start;
-  max-height: 46dvh;
+  /* Tight within a run from one person, loose between runs — which is the
+     rhythm that makes a conversation readable without any labels on it. */
+  gap: 3px;
+  align-content: end;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-right: var(--s-1);
+  padding: var(--s-4) var(--s-1) var(--s-2) 0;
+}
+
+/* The gap that separates one person's run from the other's. */
+.bubble-row--mine + .bubble-row--theirs,
+.bubble-row--theirs + .bubble-row--mine {
+  margin-top: var(--s-4);
 }
 
 .bubble-row {
@@ -688,11 +730,21 @@
 }
 
 .bubble {
-  max-width: min(82%, 46ch);
+  max-width: min(78%, 44ch);
   padding: var(--s-3) var(--s-4);
-  border-radius: 14px;
+  /* Square off the corner facing the speaker, so a run of bubbles reads as
+     one turn rather than a stack of separate objects. */
+  border-radius: 16px;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.bubble-row--mine .bubble {
+  border-bottom-right-radius: 5px;
+}
+
+.bubble-row--theirs .bubble {
+  border-bottom-left-radius: 5px;
 }
 
 .bubble-row--mine .bubble {
@@ -766,6 +818,7 @@
 }
 
 .thread__foot {
+  flex: 0 0 auto;
   padding-top: var(--s-3);
   border-top: 1px solid var(--rule);
 }

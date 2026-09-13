@@ -225,11 +225,32 @@
   background: var(--surface-2);
 }
 
+/* The scrim is the only thing making the caption readable, so its density is
+   a measured number rather than a taste one.
+
+   A straight 0.82 -> 0 fade left about 0.56 alpha where the top of the name
+   sits, which carries white at 4.4:1 over a light photo, and the age at 3.7:1
+   — both under the bar, and a pale sky or a white shirt behind somebody's head
+   is the ordinary case rather than a corner one. So the gradient now holds its
+   density through the band the text occupies and only fades above it, and the
+   veil is shorter, because density high up the card dulls the face for nothing.
+   Measured off the painted pixels with a white photo forced underneath: 12.0:1
+   for the name, 9.4:1 for the age.
+
+   Worth writing down because the contrast auditor cannot check it — a sibling
+   overlay is not a background it can composite, so it reports these two as
+   unjudged and will keep doing so. */
 .person__veil {
   position: absolute;
   inset: auto 0 0 0;
-  height: 55%;
-  background: linear-gradient(to top, rgba(8, 14, 21, 0.82), rgba(8, 14, 21, 0));
+  height: 48%;
+  background: linear-gradient(
+    to top,
+    rgba(8, 14, 21, 0.88) 0%,
+    rgba(8, 14, 21, 0.82) 42%,
+    rgba(8, 14, 21, 0.34) 74%,
+    rgba(8, 14, 21, 0) 100%
+  );
   pointer-events: none;
 }
 
@@ -344,6 +365,61 @@
 .edit__label {
   font-weight: 600;
   font-size: var(--t--1);
+}
+
+/* The spacing that was missing.
+
+   Every field was a label stacked on a control with nothing between one
+   field and the next, so six of them ran together into a wall — the label
+   for the next question sat directly against the box answering the last
+   one, which is what makes a form feel like a queue. `.field` owns the gap
+   *inside* a field; this owns the gap between them. */
+.edit__pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-5);
+}
+
+@media (min-width: 720px) {
+  /* Two across. These are one-word answers; a select stretched to 850px for
+     the word "Woman" is harder to scan, not easier. */
+  .edit__pair {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--s-6);
+  }
+}
+
+/* The one block here that changes what the app does, set apart from the
+   descriptive fields above it. */
+.edit__group {
+  margin-top: var(--s-6);
+  padding-top: var(--s-5);
+  border-top: 1px solid var(--rule);
+}
+
+.edit__group-title {
+  margin: 0 0 var(--s-1);
+  font-size: var(--t-0);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.edit__group-note {
+  margin: 0 0 var(--s-4);
+  max-width: 54ch;
+  font-size: var(--t--1);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* A hint belongs to the control above it, not to the one below. */
+.edit__pair .hint {
+  margin-top: var(--s-1);
+}
+
+.edit__card .field > label,
+.edit__card .edit__label {
+  color: var(--ink-2);
 }
 
 .edit__photos {

@@ -41,7 +41,10 @@ SCREENS = [
     ("join", "/join", False),
     ("signin", "/signin", False),
     ("pairs", "/pairs", True),
-    ("inbox", "/inbox", True),
+    ("type", "/type", True),
+    ("chosen", "/chosen", True),
+    ("messages", "/messages", True),
+    ("profile", "/profile", True),
     ("settings", "/settings", True),
     ("review", "/review", True),
 ]
@@ -105,6 +108,31 @@ AUDIT = r"""
       if (c && c[3] > 0) bg = bg ? over(bg, c) : c;
       if (bg && bg[3] >= 0.999) break;
       node = node.parentElement;
+    }
+
+    // A scrim painted by a *sibling* rather than an ancestor. A caption over
+    // a photograph sits on one of these, and the walk up the tree cannot see
+    // it: the scrim is not above the text, it is beside something above it.
+    // Checking only the text's own siblings is not enough either — the veil
+    // is a sibling of the caption, not of the name inside it — so this climbs
+    // alongside the background walk. Anything found this way is reported as
+    // unjudged rather than passed: what is behind the text is now a gradient
+    // over a photograph, which is exactly the case a single colour cannot
+    // answer.
+    if (!gradient) {
+      const box = el.getBoundingClientRect();
+      const covers = (r) => r.left <= box.left + 0.5 && r.right >= box.right - 0.5
+        && r.top <= box.top + 0.5 && r.bottom >= box.bottom - 0.5;
+      for (let n = el; n && n !== document.body && !gradient; n = n.parentElement) {
+        for (const sib of n.parentElement ? n.parentElement.children : []) {
+          if (sib === n) continue;
+          const ss = getComputedStyle(sib);
+          if (ss.position === 'static' || ss.visibility === 'hidden') continue;
+          const paints = (ss.backgroundImage && ss.backgroundImage !== 'none')
+            || (parse(ss.backgroundColor) || [0, 0, 0, 0])[3] > 0;
+          if (paints && covers(sib.getBoundingClientRect())) { gradient = true; break; }
+        }
+      }
     }
 
     const label = (typeof el.className === 'string' && el.className)

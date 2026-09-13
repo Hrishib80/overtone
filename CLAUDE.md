@@ -899,9 +899,8 @@ Each of these cost real debugging time. Do not reintroduce them.
   sets white ink for the ground; a card that does not take its ink back gets
   white headings on white. It is invisible rather than wrong-looking, so it
   survives a glance — `.status__card` shipped like that until the verification
-  screen was photographed. `scratchpad/contrast.py` walks a page and flags any
-  text under 2:1 against what is behind it (it cannot read gradients, so the
-  landing page reports false positives).
+  screen was photographed. `scripts/check_contrast.py` walks every screen in
+  both themes and flags anything under the WCAG threshold for its size.
 - **Accent fills need `--on-accent`, not `#fff`.** The palette inverts between
   themes — dark red becomes light red — so hardcoded white heads for
   white-on-pale in dark mode. Measured: white on dark-mode `--red` is 3.4:1
@@ -909,7 +908,28 @@ Each of these cost real debugging time. Do not reintroduce them.
   came back three more times after being written down once (a chip, the
   recorder button, the error toast), so grep for `color: #fff` before
   believing it is gone. White *is* right over a fixed dark scrim like
-  `rgba(11, 20, 32, 0.82)`, which does not invert — that is the only case.
+  `rgba(11, 20, 32, 0.82)`, which does not invert — that is the only case, and
+  see the next entry for the condition attached to it.
+- **A scrim is only as good as its density *where the text sits*.** The card
+  caption on Keep choosing you is white over `.person__veil`, a
+  `rgba(8, 14, 21, 0.82)` gradient fading to nothing — which sounds safe and
+  was not. A linear fade is already down to ~0.56 alpha by the top of the
+  name, giving 4.4:1 over a light photo and 3.7:1 for the age line. The fix is
+  to hold the density through the band the text occupies and fade only above
+  it; the veil also got *shorter*, because opacity high up the card dulls the
+  face and buys no contrast. Measure this off painted pixels with a white
+  photo forced underneath — a white shirt or a pale sky behind somebody's head
+  is the ordinary case, and it is the case the demo portraits never show you.
+- **The contrast auditor cannot see a scrim, because it is a sibling.** It
+  composites *ancestor* backgrounds, and an overlay is beside something above
+  the text rather than above it — so a caption over a photograph fell through
+  to the card's own pale surface and was reported as white-on-pale at 1.1:1.
+  It now climbs alongside the background walk looking for a positioned,
+  painting sibling that covers the text, and reports those as **unjudged**
+  rather than passed. Unjudged is the honest answer: what is behind the text
+  is a gradient over a photograph, which no single colour can stand in for.
+  Both wrong readings and right ones came out of that same blind spot, so a
+  clean run does not mean the overlay cases are fine — check them by hand.
 - **Dark mode was fine; light mode was not.** Sweeping every screen in both
   themes turned up nine unreadable elements and *all nine were in light* —
   white on the sky at 2.1:1, which dark mode fixes for free because the ground
