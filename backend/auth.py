@@ -72,10 +72,28 @@ async def require_auth(authorization: str | None = Header(default=None)) -> str:
     return user_id
 
 
+# How stale `last_active_at` has to be before a request is worth a write. Every
+# authenticated request could update it, but that is a write per read for a
+# column accurate to the second when nothing needs better than the minute —
+# and what needs it at all is `notify`, deciding whether somebody is sitting
+# in the app right now and should be left alone.
+ACTIVITY_RESOLUTION = timedelta(minutes=5)
+
+
 async def current_user(user_id: str = Depends(require_auth), db: AsyncSession = Depends(get_db)) -> User:
     user = await db.get(User, user_id)
     if user is None or user.deleted_at is not None:
         raise NotAuthenticated("Account not found.")
+
+    # Recorded here rather than at login, because a login is not activity —
+    # people stay signed in for weeks, and "last seen" taken from the last
+    # sign-in would have told `notify` that a person reading their inbox right
+    # now was last here on Tuesday.
+    now = utcnow()
+    if user.last_active_at is None or now - user.last_active_at > ACTIVITY_RESOLUTION:
+        user.last_active_at = now
+        await db.commit()
+
     return user
 
 

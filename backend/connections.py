@@ -172,6 +172,17 @@ async def send_request(
     return connection, message
 
 
+async def is_unanswered_request(db: AsyncSession, connection_id: str) -> bool:
+    """Whether the next message here would be the one that opens it.
+
+    Asked *before* the write, because `post_message` is what flips the status
+    — afterwards there is no way to tell the reply that opened a conversation
+    from the fortieth message in it, and only the first is worth an email.
+    """
+    connection = await db.get(Connection, connection_id)
+    return connection is not None and connection.status == ConnectionStatus.requested
+
+
 async def post_message(db: AsyncSession, *, sender: User, connection_id: str, text: str) -> ChatMessage:
     """Send into an existing conversation.
 

@@ -225,6 +225,11 @@ class User(Base):
     # reachable through the same surface an attacker already has a session on.
     is_reviewer = Column(Boolean, nullable=False, default=False)
 
+    # On by default, because the one email this sends is the one that makes
+    # the product work — somebody wrote to you and is waiting. Turning it off
+    # is one click from inside the email itself; see backend/notify.py.
+    email_notifications = Column(Boolean, nullable=False, default=True)
+
     @property
     def age(self) -> int | None:
         if not self.birthdate:

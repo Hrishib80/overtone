@@ -12,7 +12,7 @@ making architectural changes.
 
 ## Current state
 
-Phases 00–04 are complete, phase 05 is under way. **366 tests passing**, lint clean,
+Phases 00–04 are complete, phase 05 is under way. **379 tests passing**, lint clean,
 migration round-trips, frontend builds, and the whole loop — pair, unlock,
 request, reply — has been driven end to end in a browser at phone and laptop
 width.
@@ -76,7 +76,7 @@ silently makes the whole mechanic impossible for whoever is on the short side
 — twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
-pytest                       # 366 tests, no network, no models needed
+pytest                       # 379 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
 python scripts/manage.py reviewer --email you@example.com   # open the review queue
 python scripts/check_storage.py  # why uploads are or are not working
@@ -548,6 +548,49 @@ Approving sets it, returns the photo to `uploaded` and re-enqueues the job —
 the worker elects the primary and embeds, because that is where the model
 lives.
 
+### Reaching somebody who is not looking
+
+Nothing used to leave the building except a verification link. Somebody spent
+seven comparisons unlocking a person, spent their one opening message, and the
+recipient found out whenever they next happened to open the inbox. For a loop
+that turns entirely on the other person answering, that is the hole that
+empties it.
+
+**Two emails exist, and only two** — a request arrived, and a request was
+answered. Those are the moments where one person is waiting on another;
+everything else is discoverable by opening the app. There is deliberately **no
+email per message** in an open conversation: the socket already delivers those
+to anyone with the thread open, and mailing the rest trains people to filter
+us, which costs the two that matter.
+
+**The email never carries the message.** Somebody wrote one careful thing to
+one person, and it is not ours to copy into a mailbox that may be read at a
+desk, on a shared laptop, or over a shoulder. The sender's first name and a
+link. No photo, for the same reason.
+
+**Nothing is sent to somebody who is already here.** `QUIET_AFTER` is fifteen
+minutes; an email that arrives while you are looking at the thing it describes
+is the kind that gets a sending domain blocked. That rule is why
+`last_active_at` is now written from `current_user` rather than only at login
+— people stay signed in for weeks, and "last seen" taken from the last
+sign-in would have said somebody reading their inbox right now was last here
+on Tuesday. It is written at most once per five minutes
+(`ACTIVITY_RESOLUTION`), because nothing needs it accurate to the second and a
+write per read is a real cost.
+
+**Unsubscribing works from inside the email, with no login.** The people most
+likely to want out are the least likely to still have an account they can get
+into, and a preference reachable only behind a sign-in is a reason to press
+"spam" instead — which costs the sending domain far more than the unsubscribe
+would have. The link is an HMAC over the user id and never expires; an
+unsubscribe link that has gone stale is a complaint. The endpoint answers
+identically whether or not the account exists, so it cannot be used to find
+out which addresses are registered.
+
+**The page acts on arrival rather than asking to confirm.** The person already
+decided, in their mail client. Making them decide twice is how an unsubscribe
+becomes a spam report.
+
 ### Identity model
 
 Three separate fields, and the separation is load-bearing:
@@ -867,8 +910,9 @@ Still open:
   hundred real profile photos through NudeNet and looked at what got held.
   Expect the hold rate to be the first thing that needs tuning, and expect it
   to be too high rather than too low.
-- **Nothing notifies anybody outside the app.** No email, no push. The inbox
-  is live now, but only while it is open.
+- **No push, only email.** The two moments that matter now leave the building
+  (`backend/notify.py`); a phone notification is a separate piece of work and
+  a separate consent.
 - **Nothing tells a reporter what happened.** Deliberate for now (see the note
   in `safety.py` about why an outcome is not disclosed), but "a person reads
   every report" is a claim the reporter currently has to take on faith.
@@ -928,9 +972,9 @@ an action or introduces content; nothing here loops or decorates.
   different database from the one each test builds. `tests/test_live.py`
   covers the bus and the publish contract instead; the access check itself is
   only exercised by hand. Fix when the socket next changes shape.
-- **No notification of any kind** when a request arrives, unless the inbox is
-  already open — the socket only carries a conversation somebody is looking
-  at. Mail sender first, then this.
+- **Still nothing on a phone.** Email covers the two moments that matter
+  (`backend/notify.py`), but there is no push, so a request reaching somebody
+  who does not read mail promptly still waits for them to open the app.
 - **`/inbox` holds the thread in page state, not the URL**, so a conversation
   cannot be linked to or restored by reload. The router matches exact paths and
   has no params; add them when a second surface needs them. Profiles and
@@ -970,7 +1014,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 366 and rising; every bug found gets a regression
+- **Tests are the contract.** 379 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.
@@ -987,6 +1031,7 @@ an action or introduces content; nothing here loops or decorates.
   | `pairing.py` | `pairs.py` | generation, serve/decide, round scheduling |
   | `connections.py` | `inbox.py` | requests, replies, declines, the inbox |
   | `bus.py` | `signaling.py` | fan-out between processes; the chat socket |
+  | `notify.py` | `account.py` | which emails go out, and the unsubscribe |
   | `screening.py` (pure) | — | what to do about what the detectors found |
   | `rating.py` (pure) | — | Glicko-2 and the Wilson interval, no database |
   | `rating_service.py` | — | the only thing touching both maths and SQL |

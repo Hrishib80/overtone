@@ -178,6 +178,62 @@ export default {
       }
     }
 
+    // ---- email ------------------------------------------------------------
+
+    const mailCard = section(
+      'Email',
+      'Two emails, and only two: somebody wrote to you, and somebody answered you. Never the message itself — that stays in the app.'
+    );
+    const mailBody = createElement('div', { className: 'settings__consent' });
+    mailCard.append(mailBody);
+
+    async function loadMail() {
+      let state;
+      try {
+        state = await api.getNotifications();
+      } catch (error) {
+        mailBody.replaceChildren(createElement('p', { className: 'settings__muted' }, error.message));
+        return;
+      }
+
+      const on = state.email_notifications;
+      mailBody.replaceChildren(
+        createElement(
+          'p',
+          { className: `settings__status ${on ? 'is-on' : 'is-off'}` },
+          on ? 'On' : 'Off'
+        )
+      );
+
+      const toggle = createElement(
+        'button',
+        { className: on ? 'btn btn--ghost' : 'btn', type: 'button' },
+        on ? 'Turn them off' : 'Turn them on'
+      );
+      toggle.addEventListener('click', async () => {
+        toggle.disabled = true;
+        try {
+          await api.setNotifications(!on);
+        } catch (error) {
+          toast(error.message, { error: true });
+          toggle.disabled = false;
+          return;
+        }
+        await loadMail();
+      });
+      mailBody.append(toggle);
+
+      if (!on) {
+        mailBody.append(
+          createElement(
+            'p',
+            { className: 'settings__note' },
+            'With these off, the only way to find out somebody wrote to you is to open the app.'
+          )
+        );
+      }
+    }
+
     // ---- deletion --------------------------------------------------------
 
     const deleteCard = section(
@@ -248,9 +304,9 @@ export default {
 
     deleteCard.append(openDelete, deleteForm);
 
-    body.append(blocksCard, consentCard, deleteCard);
+    body.append(blocksCard, consentCard, mailCard, deleteCard);
 
-    page.mounted = () => Promise.all([loadBlocks(), loadConsent()]);
+    page.mounted = () => Promise.all([loadBlocks(), loadConsent(), loadMail()]);
     return page;
   },
 };

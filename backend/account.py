@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend import privacy
+from backend import notify, privacy
 from backend.auth import current_user, verify_password
 from backend.database import User, get_db
 from backend.errors import NotAuthorized
@@ -76,6 +76,60 @@ async def take_consent_back(
     withdrawn = await privacy.withdraw(db, user.id)
     await db.commit()
     return {"withdrawn": withdrawn, **_consent_view(None)}
+
+
+class NotificationPrefs(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    email_notifications: bool
+
+
+@router.get("/notifications")
+async def read_notifications(
+    user: User = Depends(current_user),
+) -> dict[str, Any]:
+    return {"email_notifications": user.email_notifications}
+
+
+@router.put("/notifications")
+async def set_notifications(
+    body: NotificationPrefs,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    user.email_notifications = body.email_notifications
+    await db.commit()
+    return {"email_notifications": user.email_notifications}
+
+
+class Unsubscribe(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    user_id: str
+    token: str
+
+
+@router.post("/unsubscribe")
+async def unsubscribe(body: Unsubscribe, db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    """Turn the emails off from inside one, without signing in.
+
+    Deliberately unauthenticated. The people most likely to want out are the
+    least likely to still have an account they can get into, and a preference
+    reachable only behind a login is not really a preference — it is a reason
+    to click "spam" instead, which costs the sending domain far more than the
+    unsubscribe would have.
+
+    The token is an HMAC over the user id, so only a link we sent can do this,
+    and it answers the same way whether or not the account exists — otherwise
+    it would be an oracle for which addresses are registered.
+    """
+    if notify.valid_unsubscribe(body.user_id, body.token):
+        user = await db.get(User, body.user_id)
+        if user is not None:
+            user.email_notifications = False
+            await db.commit()
+            log.info("unsubscribed", user_id=user.id)
+    return {"status": "unsubscribed"}
 
 
 class DeleteRequest(BaseModel):

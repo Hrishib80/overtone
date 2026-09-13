@@ -14,9 +14,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend import connections, signaling
+from backend import connections, notify, signaling
 from backend.auth import require_member
-from backend.database import User, get_db
+from backend.database import Connection, User, get_db
 from backend.logging_config import get_logger
 from backend.ratelimit import SEND_REQUEST, consume
 
@@ -61,7 +61,20 @@ async def create_request(
         "status": connection.status,
         "message": connections.serialise_message(message, user.id),
     }
+
+    # Queued before the commit, deliberately: the job row and the message it
+    # describes land in the same transaction, so there is no window where one
+    # exists without the other. That is the whole reason the queue is in
+    # Postgres rather than in Redis.
+    recipient = await db.get(User, connections.peer_id(connection, user.id))
+    if recipient is not None:
+        await notify.request_received(db, recipient=recipient, sender=user)
+
     await db.commit()
+    # No socket publish here on purpose: a request has no live channel — the
+    # socket only opens on a conversation that is already open, which is the
+    # single-message limit doing its job. The email above is the whole of how
+    # a request reaches somebody who is not looking.
     return payload
 
 
@@ -91,8 +104,19 @@ async def create_message(
     user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
+    was_request = await connections.is_unanswered_request(db, connection_id)
     message = await connections.post_message(db, sender=user, connection_id=connection_id, text=body.text)
     payload = connections.serialise_message(message, user.id)
+
+    # Only the reply that *opens* a conversation is worth an email. Every
+    # message after it goes down the socket and nowhere else — mailing those
+    # would train people to filter us, which costs the two that matter.
+    if was_request:
+        connection = await db.get(Connection, connection_id)
+        opener = await db.get(User, connection.initiator_id) if connection else None
+        if opener is not None:
+            await notify.request_answered(db, recipient=opener, replier=user)
+
     await db.commit()
     # After the commit, never before: an event announcing a message that then
     # failed to save would put text on the other person's screen that does not

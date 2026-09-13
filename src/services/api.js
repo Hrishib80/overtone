@@ -154,6 +154,20 @@ class Api {
     return this.request('POST', '/api/account/delete', { password });
   }
 
+  getNotifications() {
+    return this.request('GET', '/api/account/notifications');
+  }
+
+  setNotifications(on) {
+    return this.request('PUT', '/api/account/notifications', { email_notifications: on });
+  }
+
+  // No token needed: this is reached from inside an email, by somebody who
+  // may well not be able to sign in any more.
+  unsubscribe(userId, token) {
+    return this.request('POST', '/api/account/unsubscribe', { user_id: userId, token });
+  }
+
   // ---- safety ----
   getReportReasons() {
     return this.request('GET', '/api/safety/reasons');

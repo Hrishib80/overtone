@@ -11,6 +11,7 @@ import InboxPage from './pages/InboxPage.js';
 import SettingsPage from './pages/SettingsPage.js';
 import ReviewPage from './pages/ReviewPage.js';
 import SuspendedPage from './pages/SuspendedPage.js';
+import UnsubscribePage from './pages/UnsubscribePage.js';
 
 async function boot() {
   router.register({
@@ -24,6 +25,7 @@ async function boot() {
     '/settings': SettingsPage,
     '/review': ReviewPage,
     '/suspended': SuspendedPage,
+    '/unsubscribe': UnsubscribePage,
   });
 
   // Resolve the account before the first render, so the router never has to
