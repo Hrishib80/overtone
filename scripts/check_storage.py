@@ -27,13 +27,25 @@ NOTE = "       "
 
 
 def key_role(key: str) -> str | None:
-    """Which key this is, read out of the token itself.
+    """Which key this is, read out of the key itself.
 
-    Supabase keys are JWTs carrying a `role` claim, so "did I paste the anon
-    key or the service role key" is a question the key can answer — and it is
-    the single most common reason server-side uploads fail, because the anon
-    key is subject to row-level security and signing an upload is a write.
+    "Did I paste the browser key or the server key" is the single most common
+    reason server-side uploads fail, and it is a question the key can answer —
+    so it is answered here rather than guessed.
+
+    Supabase has two generations of key and a project may show either:
+
+    * new — `sb_publishable_…` (browsers) and `sb_secret_…` (servers)
+    * legacy — JWTs carrying a `role` claim of `anon` or `service_role`
+
+    Both are returned in the old vocabulary, because that is what the rest of
+    this script and the error messages talk about.
     """
+    if key.startswith("sb_secret_"):
+        return "service_role"
+    if key.startswith("sb_publishable_"):
+        return "anon"
+
     try:
         payload = key.split(".")[1]
         payload += "=" * (-len(payload) % 4)
@@ -78,17 +90,26 @@ def check_supabase() -> int:
 
     role = key_role(settings.supabase_key)
     if role == "service_role":
-        print(f"{OK} SUPABASE_KEY is the service role key")
+        which = "sb_secret_…" if settings.supabase_key.startswith("sb_") else "service_role"
+        print(f"{OK} SUPABASE_KEY is a server key ({which})")
     elif role == "anon":
-        print(f"{BAD} SUPABASE_KEY is the *anon* key")
-        print(f"{NOTE} signing an upload is a server-side write, and the anon key is")
+        which = "sb_publishable_…" if settings.supabase_key.startswith("sb_") else "anon"
+        print(f"{BAD} SUPABASE_KEY is the browser key ({which})")
+        print(f"{NOTE} signing an upload is a server-side write, and the browser key is")
         print(f"{NOTE} subject to row-level security, which refuses it as a bare 400.")
-        print(f"{NOTE} Use the service role key: Supabase dashboard -> Project Settings")
-        print(f"{NOTE} -> API -> Project API keys -> service_role. Keep it server-side;")
-        print(f"{NOTE} it bypasses RLS and must never reach a browser.")
+        print(f"{NOTE}")
+        print(f"{NOTE} Dashboard -> Project Settings -> API Keys. Supabase renamed these,")
+        print(f"{NOTE} so a project shows one of two sets:")
+        print(f"{NOTE}   new     'Secret keys'  -> sb_secret_…   (use this)")
+        print(f"{NOTE}   legacy  'service_role' -> a long JWT    (use this)")
+        print(f"{NOTE} If you only see publishable/anon, look for a 'Legacy API keys'")
+        print(f"{NOTE} tab, or create one under 'Secret keys'.")
+        print(f"{NOTE} Either way it is server-side only — it bypasses row-level")
+        print(f"{NOTE} security and must never reach a browser.")
         problems += 1
     else:
-        print(f"{NOTE} could not read a role out of SUPABASE_KEY (role={role!r})")
+        print(f"{NOTE} could not tell which key SUPABASE_KEY is (role={role!r})")
+        print(f"{NOTE} a server key is either sb_secret_… or a JWT with role=service_role")
 
     headers = {"Authorization": f"Bearer {settings.supabase_key}", "apiKey": settings.supabase_key}
     try:
