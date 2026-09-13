@@ -73,6 +73,27 @@ class ConfirmRequest(BaseModel):
 REAL_PHOTO_STATES = (MediaStatus.uploaded, MediaStatus.processed)
 
 
+async def _forget_object(key: str) -> None:
+    """Drop the stored bytes, and carry on if they are already unreachable.
+
+    Removing or replacing a photo must not fail because the object behind it
+    has gone. The row is what decides whether somebody has a photo; the bytes
+    are downstream of it, and an object that cannot be deleted is a cleanup
+    problem rather than a reason to refuse the person their own edit.
+
+    Left behind by a failure here: an orphaned object in the bucket. That is
+    the cheaper of the two bad outcomes — the other is somebody permanently
+    unable to change a photo because of a file they cannot see.
+
+    `storage.delete` still raises for callers that genuinely need to know it
+    worked, which account deletion will.
+    """
+    try:
+        await storage.delete(key)
+    except Exception:
+        log.warning("object_delete_failed_continuing", key=key)
+
+
 async def _photo_count(db: AsyncSession, user_id: str) -> int:
     return int(
         await db.scalar(
@@ -228,7 +249,7 @@ async def confirm_upload(
             # rather than landing third and leaving the old order intact.
             asset.display_order = replaced.display_order
             asset.is_primary = replaced.is_primary
-            await storage.delete(replaced.object_key)
+            await _forget_object(replaced.object_key)
             await db.delete(replaced)
         else:
             highest = await db.scalar(
@@ -335,7 +356,7 @@ async def delete_media(
 
     was_primary = asset.kind == MediaKind.photo and asset.is_primary
 
-    await storage.delete(asset.object_key)
+    await _forget_object(asset.object_key)
     await db.delete(asset)
     await db.flush()
 

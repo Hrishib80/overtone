@@ -14,6 +14,13 @@ unreachable for whoever is on the short side of it.
 
 Portraits are generated as SVG files under MEDIA_ROOT and served by the app's
 own /media_uploads mount, so the demo needs no network and no object storage.
+
+That is true even when STORAGE_PROVIDER=supabase, which is worth knowing: the
+seeded people keep local `/media_uploads/...` URLs while anything uploaded
+through the app goes to the bucket. Both work in development because the API
+serves that mount either way — but a deployment serving the SPA from somewhere
+else will show the demo people as broken images, and the answer is to reseed
+rather than to go looking for a bug.
 """
 
 from __future__ import annotations

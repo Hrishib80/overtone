@@ -123,14 +123,21 @@ def check_supabase() -> int:
         problems += 1
     else:
         names = [b["name"] for b in response.json()]
-        if not names:
+        if not names and role != "service_role":
+            # Row-level security filters this list rather than refusing it, so
+            # an empty result from a browser key means "cannot see", not "not
+            # there". Saying otherwise sends people hunting for a bucket that
+            # already exists.
+            print(f"{NOTE} cannot list buckets with a browser key — RLS hides them")
+            print(f"{NOTE} this says nothing about whether {settings.supabase_bucket!r} exists")
+        elif not names:
             print(f"{BAD} the project has no storage buckets at all")
         elif settings.supabase_bucket in names:
             print(f"{OK} bucket {settings.supabase_bucket!r} exists")
         else:
             print(f"{BAD} no bucket named {settings.supabase_bucket!r}")
             print(f"{NOTE} buckets that do exist: {', '.join(names)}")
-        if settings.supabase_bucket not in names:
+        if settings.supabase_bucket not in names and (names or role == "service_role"):
             print(f"{NOTE} create it: Supabase dashboard -> Storage -> New bucket ->")
             print(f"{NOTE} name it {settings.supabase_bucket!r}, and make it public so")
             print(f"{NOTE} profile photos can be served without a signed read.")
