@@ -13,7 +13,7 @@ making architectural changes.
 ## Current state
 
 Phases 00–06 are complete; phase 07 — calibration and launch — is what is
-left. **355 tests passing**, lint clean, migration round-trips, frontend
+left. **366 tests passing**, lint clean, migration round-trips, frontend
 builds, and the whole loop — pair, unlock, request, reply — has been driven
 end to end in a browser at phone and laptop width.
 
@@ -23,6 +23,13 @@ message is a count on the navbar. Both were traded deliberately — see
 *No email, anywhere* and *The shape of the app* below.
 
 ```
+e91479e  Fix consent returning the wrong notice version about 5% of the time
+deedd0f  A harness for the unlock dials, since tuning them needs data nobody has yet
+75c2039  Clear the four outline:none rules rather than leave them suspicious
+cc7d217  Audit what is not text, and fix the two things it found
+6160286  A count endpoint for the bar, and the socket test that was called impossible
+518e6f0  Make the photo controls legible, and pressable at all
+c7cda5d  Bring the project memory back in line with the code
 76c5a0f  Profile and messages, laid out properly — and a scrim that actually works
 b31584d  A navbar, and My type split from Keep choosing you
 50a2f79  Say what is waiting, on the only way out of the pair view
@@ -36,13 +43,6 @@ e3fd64c  Sweep every screen for text nobody can read
 bf21aa2  Phase 05: live chat, and one write path for a message
 b273e43  Fix the moderation migration against a table that has rows
 6599d62  Phase 05: the review queue, and suspension
-18bc01d  Phase 05: biometric consent, and erasure that erases
-1769984  Fix Continue on the photo step
-ad20285  Make photo edits survive an object that has already gone
-574c6d3  Recognise both generations of Supabase key
-01edc07  Add a storage diagnostic, and stop leaving the dev server misconfigured
-4f1f271  Fix photo upload, and give the photos rules
-aee72c3  Open signup: remove the campus layer
 ```
 
 ### Architecture reference
@@ -93,7 +93,7 @@ silently makes the whole mechanic impossible for whoever is on the short side
 — twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
-pytest                       # 355 tests, no network, no models needed
+pytest                       # 366 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
 python scripts/manage.py reviewer --email you@example.com   # open the review queue
 python scripts/check_storage.py  # why uploads are or are not working
@@ -1165,11 +1165,13 @@ an action or introduces content; nothing here loops or decorates.
   but business logic isn't exercised against pgvector.
 - Git history contains three committed SQLite blobs (untracked since, but still
   in history). Worth a rewrite before the first push if that matters.
-- **The socket has no end-to-end test.** `signaling._is_participant` opens
-  `AsyncSessionLocal` directly rather than the injected session, so it reads a
-  different database from the one each test builds. `tests/test_live.py`
-  covers the bus and the publish contract instead; the access check itself is
-  only exercised by hand. Fix when the socket next changes shape.
+- **`signaling._is_participant` opens `AsyncSessionLocal` directly** rather
+  than taking an injected session, because it lives inside a socket that
+  outlives any request. Tests put the test database there
+  (`monkeypatch.setattr(signaling, "AsyncSessionLocal", db_sessionmaker)`) —
+  the `socket_room` fixture does it, and forgetting it makes every connection
+  refuse for the wrong reason. The socket itself *is* driven end to end now;
+  `tests/test_live.py` has the ASGI client and the reasoning.
 - **`users.last_active_at` is written and never read.** Kept as the seam for
   presence in chat; see *Presence, and a column nothing reads*.
 - **`/messages` holds the thread in page state, not the URL**, so a conversation
@@ -1177,9 +1179,9 @@ an action or introduces content; nothing here loops or decorates.
   has no params; add them when a second surface needs them. Profiles and
   threads open in a sheet (`src/components/sheet.js`) rather than a route for
   the same reason.
-- **The inbox badge on the pair view costs a full `/api/connections` call** on
-  mount, which serialises every unlocked profile just to decide whether to show
-  a 7px dot. Wants a cheap count endpoint before launch.
+- **The thread view refetches the whole conversation on open**, even when the
+  socket has been feeding it. Fine at this size; worth a `since` parameter if
+  threads get long.
 
 ---
 
@@ -1228,7 +1230,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 355 and rising; every bug found gets a regression
+- **Tests are the contract.** 366 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.
