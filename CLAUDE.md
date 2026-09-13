@@ -1091,8 +1091,15 @@ Still open:
   compares an element to its background rather than to its other state.
 - **Focus rings drawn with `box-shadow` are reported as unjudged.** The colour
   is readable but the geometry is not, and guessing which part of a shadow is
-  the ring would be inventing a number. There are four `outline: none` rules
-  in `inbox.css` worth a look by hand.
+  the ring would be inventing a number.
+
+  The four `outline: none` rules in `inbox.css` have been checked by hand and
+  are all fine, so do not re-investigate them. `.sheet__panel:focus` is a
+  dialog container focused for screen readers rather than an operable control,
+  and a ring around the whole sheet is noise. The three composer textareas
+  swap the ring for `border-color: var(--blue)`, and the focused state is
+  6.76:1 from the unfocused one in light and 6.57:1 in dark — well past the
+  3:1 that a state change needs.
 - **It cannot judge anything over a photograph.** Text on a scrim is reported
   as unjudged, and staying unjudged is correct — but it means the card
   captions are held by a measurement written into a comment rather than by
