@@ -44,15 +44,11 @@ async function counts() {
   if (!inFlight) {
     inFlight = (async () => {
       try {
-        const inbox = await api.getInbox();
-        cached = {
-          '/type': inbox.unlocked.length,
-          '/chosen': inbox.admirers.length,
-          // Requests plus anything unread: both are somebody waiting on you.
-          '/messages':
-            inbox.requests.length +
-            inbox.conversations.reduce((n, c) => n + (c.unread > 0 ? 1 : 0), 0),
-        };
+        // Three integers from a dedicated endpoint, not a whole inbox. The
+        // grouping rules live on the server for both, and a test pins the
+        // cheap answer to the expensive one so they cannot drift.
+        const n = await api.getCounts();
+        cached = { '/type': n.type, '/chosen': n.chosen, '/messages': n.messages };
       } catch {
         // A bar that throws would take the page down with it. No counts is a
         // worse bar, not a broken screen.

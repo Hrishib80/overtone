@@ -66,14 +66,6 @@ class Api {
     });
   }
 
-  verifyEmail(token) {
-    return this.request('POST', '/api/auth/verify-email', { token });
-  }
-
-  resendVerification(email) {
-    return this.request('POST', '/api/auth/resend-verification', { email });
-  }
-
   login(email, password) {
     return this.request('POST', '/api/auth/login', { email, password });
   }
@@ -115,6 +107,14 @@ class Api {
   // ---- connections ----
   getInbox() {
     return this.request('GET', '/api/connections');
+  }
+
+  /* Just the three numbers on the bar. The bar is on every signed-in screen,
+     so this runs on every page load — `getInbox()` serialises a full profile
+     for every unlocked person and every admirer to answer it, which is a cost
+     with no relationship to three integers. */
+  getCounts() {
+    return this.request('GET', '/api/connections/counts');
   }
 
   sendRequest(subjectId, text) {

@@ -296,6 +296,71 @@ async def peer_card(db: AsyncSession, user_id: str) -> dict[str, Any]:
     }
 
 
+async def counts(db: AsyncSession, user: User) -> dict[str, int]:
+    """The three numbers the navbar puts on screen, and nothing else.
+
+    The bar is on every signed-in page, so this runs on every page load. It
+    used to run `inbox()` — which serialises a full profile for every unlocked
+    person and every admirer, fetches a `peer_card` per connection, and reads
+    every message in every thread to find the last one — to render three small
+    integers. The cost had no relationship to what was displayed.
+
+    So this deliberately duplicates the *grouping rules* rather than reusing
+    the builder: what is expensive there is the serialisation, and there is no
+    way to reuse the shape without paying for it. The rules are small enough
+    to restate and `test_counts_agree_with_the_inbox` pins them together, so
+    the duplication cannot drift silently — which is the only reason it is
+    acceptable.
+    """
+    rows = (
+        await db.execute(
+            select(
+                Connection.id,
+                Connection.user_a_id,
+                Connection.user_b_id,
+                Connection.status,
+                Connection.initiator_id,
+            ).where(or_(Connection.user_a_id == user.id, Connection.user_b_id == user.id))
+        )
+    ).all()
+
+    connected_peers = {b if a == user.id else a for _, a, b, _, _ in rows}
+    open_ids = [cid for cid, _, _, status, _ in rows if status == ConnectionStatus.open]
+    requests = sum(
+        1
+        for _, _, _, status, initiator in rows
+        if status == ConnectionStatus.requested and initiator != user.id
+    )
+
+    # One aggregate for "how many threads have something unread", rather than
+    # every message in every thread. `distinct` is doing the work that
+    # `reduce(c.unread > 0)` did on the client.
+    unread_threads = 0
+    if open_ids:
+        unread_threads = (
+            await db.scalar(
+                select(func.count(func.distinct(ChatMessage.connection_id)))
+                .where(ChatMessage.connection_id.in_(open_ids))
+                .where(ChatMessage.from_user_id != user.id)
+                .where(ChatMessage.status != ChatStatus.read)
+            )
+        ) or 0
+
+    separated = await blocked_ids(db, user.id)
+    hidden = connected_peers | separated
+
+    unlocked = sum(1 for s in await unlocked_subject_ids(db, user.id) if s not in hidden)
+    admirers = sum(1 for v in await admirer_ids(db, user.id) if v not in hidden)
+
+    return {
+        "type": unlocked,
+        "chosen": admirers,
+        # A request and an unread message are the same thing to the person
+        # looking at the bar: somebody is waiting on them.
+        "messages": requests + unread_threads,
+    }
+
+
 async def inbox(db: AsyncSession, user: User) -> dict[str, Any]:
     """Everything this person currently has in play, in five groups.
 

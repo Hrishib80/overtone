@@ -13,15 +13,21 @@ request, blocking and the rate limits all applied to the HTTP path and not to
 the socket one. The socket is now delivery-only, and `RELAYED_TYPES` is the
 allowlist that makes it so.
 
-There is no end-to-end WebSocket test here, and that is a real gap rather than
-an oversight: `signaling._is_participant` opens `AsyncSessionLocal` directly
-instead of the injected session, so it reads a different database from the one
-each test builds. Worth fixing when the socket next changes shape.
+**And the socket is now driven end to end.** `Socket` below speaks ASGI to the
+app directly, because the HTTP fixture is httpx's `ASGITransport`, which has no
+WebSocket support, and Starlette's `TestClient` runs the app in a portal on its
+own event loop — the wrong loop for an aiosqlite session bound to this test's.
+Driving the three ASGI message types by hand avoids both and exercises the
+route as written. `_is_participant` still opens `AsyncSessionLocal` rather than
+taking an injected session, because it lives inside a socket that outlives any
+request, so the fixture puts the test database there.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import json
 
 import pytest
 import pytest_asyncio
@@ -236,3 +242,183 @@ def test_the_socket_module_does_not_write_messages():
 
     source = inspect.getsource(signaling)
     assert "ChatMessage(" not in source
+
+
+# ---------------------------------------------------------------------------
+# The socket, end to end
+# ---------------------------------------------------------------------------
+
+
+class Socket:
+    """A WebSocket client that speaks ASGI to the app directly.
+
+    Three message types in each direction is the whole protocol, so driving it
+    by hand costs less than it looks and buys the two things the alternatives
+    could not: it stays in this test's event loop, so the injected sessionmaker
+    and the bus both behave, and it exercises the route exactly as written —
+    token check, origin check, participation check, accept, relay, disconnect.
+    """
+
+    def __init__(self, room_id: str, token: str, *, origin: str | None = None):
+        path = f"/ws/signal/{room_id}"
+        self.scope = {
+            "type": "websocket",
+            "asgi": {"version": "3.0", "spec_version": "2.3"},
+            "http_version": "1.1",
+            "scheme": "ws",
+            "server": ("test", 80),
+            "client": ("test", 123),
+            "root_path": "",
+            "path": path,
+            "raw_path": path.encode(),
+            "query_string": f"token={token}".encode(),
+            "headers": [(b"host", b"test")] + ([(b"origin", origin.encode())] if origin else []),
+            "subprotocols": [],
+            "state": {},
+        }
+        self._to_app: asyncio.Queue = asyncio.Queue()
+        self._from_app: asyncio.Queue = asyncio.Queue()
+        self._task: asyncio.Task | None = None
+        self.accepted = False
+        self.close_code: int | None = None
+
+    async def __aenter__(self):
+        from backend.app import app
+
+        self._task = asyncio.create_task(app(self.scope, self._to_app.get, self._from_app.put))
+        await self._to_app.put({"type": "websocket.connect"})
+        first = await asyncio.wait_for(self._from_app.get(), timeout=5)
+        if first["type"] == "websocket.accept":
+            self.accepted = True
+        else:
+            self.close_code = first.get("code")
+        return self
+
+    async def __aexit__(self, *exc):
+        await self._to_app.put({"type": "websocket.disconnect", "code": 1000})
+        if self._task:
+            with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError):
+                await asyncio.wait_for(self._task, timeout=5)
+
+    async def send(self, payload: dict) -> None:
+        await self._to_app.put({"type": "websocket.receive", "text": json.dumps(payload)})
+
+    async def next_event(self, wait: float = 2.0) -> dict:
+        frame = await asyncio.wait_for(self._from_app.get(), timeout=wait)
+        assert frame["type"] == "websocket.send", frame
+        return json.loads(frame["text"])
+
+    async def nothing_arrives(self, within: float = 0.25) -> None:
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(self._from_app.get(), timeout=within)
+
+
+@pytest_asyncio.fixture
+async def socket_room(talking, db_sessionmaker, monkeypatch):
+    """`talking`, plus the one thing a socket needs that a request does not.
+
+    `_is_participant` opens `AsyncSessionLocal` itself rather than taking an
+    injected session, because it lives inside a socket that outlives any
+    request. Without this it reads a different database from the one the
+    fixture just built, and every connection is refused for the wrong reason.
+    """
+    monkeypatch.setattr(signaling, "AsyncSessionLocal", db_sessionmaker)
+    return talking
+
+
+@pytest.mark.asyncio
+async def test_a_socket_on_an_open_conversation_connects(socket_room):
+    async with Socket(socket_room["room"], socket_room["her"]["access_token"]) as socket:
+        assert socket.accepted is True
+
+
+@pytest.mark.asyncio
+async def test_a_stranger_is_refused_the_room(socket_room, client, fake_storage):
+    """The access check over the real handshake, rather than by calling
+    `_is_participant` directly and trusting the route to also call it."""
+    outsider = await onboard(
+        client,
+        f"cara@{TEST_DOMAIN}",
+        visible_as=["woman"],
+        interested_in=["man"],
+        store=fake_storage,
+    )
+    async with Socket(socket_room["room"], outsider["access_token"]) as socket:
+        assert socket.accepted is False
+        assert socket.close_code == signaling.POLICY_VIOLATION
+
+
+@pytest.mark.asyncio
+async def test_a_junk_token_is_refused(socket_room):
+    async with Socket(socket_room["room"], "not-a-jwt") as socket:
+        assert socket.accepted is False
+        assert socket.close_code == signaling.POLICY_VIOLATION
+
+
+@pytest.mark.asyncio
+async def test_a_message_posted_over_http_arrives_on_the_peers_socket(socket_room, client):
+    """The property the socket exists for, and the one nothing tested.
+
+    He holds a socket; she posts over HTTP. The event has to reach him without
+    him asking, and it has to carry what the database committed rather than
+    anything a client claimed.
+    """
+    room = socket_room["room"]
+    async with Socket(room, socket_room["him"]["access_token"]) as his_socket:
+        assert his_socket.accepted
+        # His own peer-joined is filtered at the sender, so: nothing yet.
+        await his_socket.nothing_arrives()
+
+        posted = await client.post(
+            f"/api/connections/{room}/messages",
+            headers=socket_room["her"]["headers"],
+            json={"text": "did the socket carry this?"},
+        )
+        assert posted.status_code == 201
+
+        event = await his_socket.next_event()
+        assert event["type"] == "chat-message"
+        assert event["message"]["text"] == "did the socket carry this?"
+        # The id the server committed, not one a client invented.
+        assert event["message"]["id"] == posted.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_typing_is_restamped_with_the_authenticated_sender(socket_room):
+    """A client that names somebody else must not be able to type as them."""
+    room = socket_room["room"]
+    her_id, his_id = _uid(socket_room["her"]), _uid(socket_room["him"])
+    async with (
+        Socket(room, socket_room["her"]["access_token"]) as her_socket,
+        Socket(room, socket_room["him"]["access_token"]) as his_socket,
+    ):
+        assert her_socket.accepted and his_socket.accepted
+        assert await her_socket.next_event() == {"type": "peer-joined", "from": his_id}
+
+        await her_socket.send({"type": "typing", "from": his_id})
+
+        assert await his_socket.next_event() == {"type": "typing", "from": her_id}
+
+
+@pytest.mark.asyncio
+async def test_the_socket_will_not_carry_a_chat_message(socket_room):
+    """`RELAYED_TYPES` as a live wire rather than a set literal: a client
+    sending `chat-message` gets silence, because a message has exactly one
+    write path and it is HTTP."""
+    room = socket_room["room"]
+    async with (
+        Socket(room, socket_room["her"]["access_token"]) as her_socket,
+        Socket(room, socket_room["him"]["access_token"]) as his_socket,
+    ):
+        await her_socket.next_event()  # peer-joined
+
+        await her_socket.send({"type": "chat-message", "text": "straight down the socket"})
+
+        await his_socket.nothing_arrives()
+
+
+@pytest.mark.asyncio
+async def test_ping_is_answered_on_the_socket_that_asked(socket_room):
+    async with Socket(socket_room["room"], socket_room["her"]["access_token"]) as socket:
+        await socket.send({"type": "ping"})
+        assert await socket.next_event() == {"type": "pong"}

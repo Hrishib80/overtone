@@ -526,3 +526,98 @@ async def test_a_socket_only_opens_on_a_conversation_that_is_open(
     assert await signaling._is_participant(connection_id, ben["id"]) is True
     assert await signaling._is_participant(connection_id, ada["id"]) is True
     assert await signaling._is_participant(connection_id, foil["id"]) is False
+
+
+# ---------------------------------------------------------------------------
+# The counts on the bar
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_counts_requires_authentication(client):
+    assert (await client.get("/api/connections/counts")).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_counts_agree_with_the_inbox(client, db_sessionmaker, fake_storage, scene):
+    """The cheap endpoint and the expensive one must never disagree.
+
+    `counts()` restates the inbox's grouping rules rather than reusing the
+    builder, because what is costly there is serialising a profile per person
+    and there is no way to reuse the shape without paying for it. That
+    duplication is only acceptable while something holds the two together, and
+    this is it: whichever one somebody edits, the other has to follow.
+
+    Walked through four states rather than asserted once, because the rules
+    that are easy to get wrong are all transitions — an unlock that becomes a
+    request, a request that becomes a conversation, a message that is read.
+    """
+
+    async def both():
+        counts = (await client.get("/api/connections/counts", headers=ada["headers"])).json()
+        inbox = (await client.get("/api/connections", headers=ada["headers"])).json()
+        derived = {
+            "type": len(inbox["unlocked"]),
+            "chosen": len(inbox["admirers"]),
+            "messages": len(inbox["requests"]) + sum(1 for c in inbox["conversations"] if c["unread"] > 0),
+        }
+        assert counts == derived, f"counts {counts} != inbox {derived}"
+        return counts
+
+    ada, foil, ben = await scene(client, db_sessionmaker, fake_storage)
+
+    # Nothing in play at all.
+    assert await both() == {"type": 0, "chosen": 0, "messages": 0}
+
+    # Ada unlocks Ben: he is someone to write to, and she is not yet anybody's
+    # admirer.
+    await _force_unlock(db_sessionmaker, ada["id"], ben["id"], foil["id"])
+    assert await both() == {"type": 1, "chosen": 0, "messages": 0}
+
+    # Ben unlocks Ada back. The crossing opens a connection with no request,
+    # so Ben leaves *both* lists — he is further along than either.
+    await _force_unlock(db_sessionmaker, ben["id"], ada["id"], foil["id"])
+    async with db_sessionmaker() as db:
+        await on_unlock(db, viewer_id=ben["id"], subject_id=ada["id"])
+        await db.commit()
+    assert await both() == {"type": 0, "chosen": 0, "messages": 0}
+
+    # The crossing opened the conversation outright, so there is no request to
+    # send — he just writes into it. One unread thread is one number on her bar.
+    inbox = (await client.get("/api/connections", headers=ada["headers"])).json()
+    connection_id = inbox["conversations"][0]["id"]
+    await client.post(
+        f"/api/connections/{connection_id}/messages",
+        headers=ben["headers"],
+        json={"text": "the pair view had you twice"},
+    )
+    assert await both() == {"type": 0, "chosen": 0, "messages": 1}
+
+    # A second unread message in the same thread is still one thing waiting,
+    # not two — the bar counts conversations, not messages. This is the whole
+    # reason the query is `count(distinct connection_id)`.
+    await client.post(
+        f"/api/connections/{connection_id}/messages",
+        headers=ben["headers"],
+        json={"text": "sorry, that was meant to be one message"},
+    )
+    assert await both() == {"type": 0, "chosen": 0, "messages": 1}
+
+    # She reads it, and the bar goes quiet.
+    await client.post(f"/api/connections/{connection_id}/read", headers=ada["headers"])
+    assert await both() == {"type": 0, "chosen": 0, "messages": 0}
+
+
+@pytest.mark.asyncio
+async def test_counts_leave_out_somebody_who_has_been_blocked(client, db_sessionmaker, fake_storage, scene):
+    """Blocking clears the affinity, so this is belt and braces — but the
+    count is the one surface where a blocked person reappearing would be
+    visible from the far side of the app, as a number that will not go away."""
+    ada, foil, ben = await scene(client, db_sessionmaker, fake_storage)
+    await _force_unlock(db_sessionmaker, ada["id"], ben["id"], foil["id"])
+    assert (await client.get("/api/connections/counts", headers=ada["headers"])).json()["type"] == 1
+
+    await client.post("/api/safety/blocks", headers=ada["headers"], json={"user_id": ben["id"]})
+
+    counts = (await client.get("/api/connections/counts", headers=ada["headers"])).json()
+    assert counts == {"type": 0, "chosen": 0, "messages": 0}

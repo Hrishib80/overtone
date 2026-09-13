@@ -44,6 +44,18 @@ async def get_inbox(
     return await connections.inbox(db, user)
 
 
+@router.get("/counts")
+async def get_counts(
+    user: User = Depends(require_member), db: AsyncSession = Depends(get_db)
+) -> dict[str, int]:
+    """Just the three numbers on the navbar.
+
+    Declared above the `/{connection_id}/...` routes so a literal path can
+    never be read as an id.
+    """
+    return await connections.counts(db, user)
+
+
 @router.post("/requests", status_code=201)
 async def create_request(
     body: RequestBody,
