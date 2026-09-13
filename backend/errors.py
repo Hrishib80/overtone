@@ -28,8 +28,12 @@ class AppError(Exception):
     code: str = "app_error"
     message: str = "Request could not be completed."
 
-    def __init__(self, message: str | None = None, **context: Any) -> None:
+    def __init__(self, message: str | None = None, *, field: str | None = None, **context: Any) -> None:
         self.message = message or self.message
+        # Which input the error is about, when there is one. The form uses it
+        # to mark that field rather than only showing a toast — "that username
+        # is taken" should point at the username box, not float above the page.
+        self.field = field
         self.context = context
         super().__init__(self.message)
 
@@ -93,9 +97,14 @@ def register_error_handlers(app: FastAPI) -> None:
         retry_after = getattr(exc, "retry_after", None)
         if retry_after:
             headers["Retry-After"] = str(retry_after)
+        content = _payload(exc.code, exc.message)
+        if exc.field:
+            # The same shape a validation error uses, so the client has one
+            # way to read "this field is wrong".
+            content["fields"] = [{"field": exc.field, "message": exc.message, "type": exc.code}]
         return JSONResponse(
             status_code=exc.status_code,
-            content=_payload(exc.code, exc.message),
+            content=content,
             headers=headers or None,
         )
 

@@ -144,10 +144,10 @@ async def test_a_replacement_takes_the_slot_it_replaced(client, verified, fake_s
 
 @pytest.mark.asyncio
 async def test_you_cannot_replace_somebody_elses_photo(client, db_sessionmaker, fake_storage):
-    from tests.conftest import TEST_DOMAIN, register_and_verify
+    from tests.conftest import register_and_verify
 
-    mine = await register_and_verify(client, f"mine@{TEST_DOMAIN}")
-    theirs = await register_and_verify(client, f"theirs@{TEST_DOMAIN}")
+    mine = await register_and_verify(client, "mine")
+    theirs = await register_and_verify(client, "theirs")
 
     their_photo = await upload_media(client, theirs["headers"], fake_storage)
     await upload_media(client, mine["headers"], fake_storage)

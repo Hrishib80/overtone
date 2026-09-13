@@ -24,7 +24,6 @@ from backend.ratelimit import (
     consume,
     sweep,
 )
-from tests.conftest import TEST_DOMAIN
 
 TINY = Limit("test_action", 3, timedelta(minutes=10))
 
@@ -179,11 +178,11 @@ def test_address_keyed_limits_are_loose_enough_for_a_campus():
 async def test_repeated_failed_logins_on_one_account_are_cut_off(client, registered):
     """The limit that actually defends a password, keyed where the attack is
     aimed rather than where it comes from."""
-    email = registered["headers"] and f"aditi@{TEST_DOMAIN}"
+    username = registered["headers"] and "aditi"
 
     last = None
     for _ in range(LOGIN_PER_ACCOUNT.allowance + 2):
-        last = await client.post("/api/auth/login", json={"email": email, "password": "wrong-password"})
+        last = await client.post("/api/auth/login", json={"username": username, "password": "wrong-password"})
 
     assert last.status_code == 429
     assert last.headers.get("Retry-After")
@@ -202,19 +201,15 @@ async def test_the_send_request_limit_is_enforced_before_any_work_happens(
     from backend.ratelimit import consume as consume_limit
     from tests.conftest import onboard
 
-    await onboard(
-        client, f"ada@{TEST_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
-    )
-    ben = await onboard(
-        client, f"ben@{TEST_DOMAIN}", visible_as=["man"], interested_in=["woman"], store=fake_storage
-    )
+    await onboard(client, "ada", visible_as=["woman"], interested_in=["man"], store=fake_storage)
+    ben = await onboard(client, "ben", visible_as=["man"], interested_in=["woman"], store=fake_storage)
 
-    async def user_id(email):
+    async def user_id(username):
         async with db_sessionmaker() as db:
-            return (await db.execute(select(User).where(User.email == email))).scalar_one().id
+            return (await db.execute(select(User).where(User.username == username))).scalar_one().id
 
-    ada_id = await user_id(f"ada@{TEST_DOMAIN}")
-    ben_id = await user_id(f"ben@{TEST_DOMAIN}")
+    ada_id = await user_id("ada")
+    ben_id = await user_id("ben")
 
     async with db_sessionmaker() as db:
         for _ in range(SEND_REQUEST.allowance):

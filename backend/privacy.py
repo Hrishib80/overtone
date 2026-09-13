@@ -216,7 +216,7 @@ async def erase(db: AsyncSession, user: User) -> dict[str, Any]:
     Returns a count per table, because "we deleted your data" is a claim that
     should be checkable rather than asserted.
     """
-    user_id, email = user.id, user.email
+    user_id = user.id
     removed: dict[str, int] = {}
 
     # Storage first, while the rows that name the objects still exist. Losing
@@ -301,5 +301,5 @@ async def erase(db: AsyncSession, user: User) -> dict[str, Any]:
     await db.flush()
     removed["users"] = 1
 
-    log.info("account_erased", user_id=user_id, email_domain=email.rsplit("@", 1)[-1], **removed)
+    log.info("account_erased", user_id=user_id, **removed)
     return removed

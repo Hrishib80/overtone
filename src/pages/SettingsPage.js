@@ -10,7 +10,7 @@ import { toast } from '../utils/toast.js';
    They sit on one screen because they are the same kind of act — taking
    something back — and because a permission you can only give is not a
    permission. Withdrawing face analysis and deleting the account are both one
-   screen away from the app, not buried behind a support email.
+   screen away from the app, not buried behind a support request.
 
    The blocked list lives here too: blocking happens in the moment, on a
    profile, and this is the only place it can be undone once the moment has
@@ -47,6 +47,28 @@ export default {
       if (lede) card.append(createElement('p', { className: 'settings__lede' }, lede));
       return card;
     }
+
+    // ---- who you are signed in as ----------------------------------------
+
+    // The username is the only credential and it cannot be recovered, so it
+    // is said back to the person somewhere they will find it again — not
+    // only in the moment they chose it.
+    const accountCard = section('Signing in');
+    const me = store.getState().me;
+    accountCard.append(
+      createElement(
+        'p',
+        { className: 'settings__lede' },
+        me?.username
+          ? `You sign in as @${me.username}. Nobody else on Overtone sees your username.`
+          : 'You sign in with your username. Nobody else on Overtone sees it.'
+      ),
+      createElement(
+        'p',
+        { className: 'settings__lede' },
+        "There's no email on Overtone, so a forgotten password can't be reset. Keep it somewhere safe."
+      )
+    );
 
     // ---- blocked people --------------------------------------------------
 
@@ -255,7 +277,7 @@ export default {
 
     deleteCard.append(openDelete, deleteForm);
 
-    body.append(blocksCard, consentCard, deleteCard);
+    body.append(accountCard, blocksCard, consentCard, deleteCard);
 
     page.mounted = () => {
       nav?.mounted();

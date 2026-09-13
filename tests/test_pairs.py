@@ -15,7 +15,7 @@ from sqlalchemy import select
 
 from backend.affinity import apply_decision, is_unlocked
 from backend.database import MediaAsset, MediaStatus, Pairing, PairRound, User, pair_key, utcnow
-from tests.conftest import TEST_DOMAIN, onboard, run_jobs
+from tests.conftest import onboard, run_jobs
 
 
 async def _two_mutual_users(client, db_sessionmaker, fake_storage, *, prefix="p"):
@@ -23,21 +23,21 @@ async def _two_mutual_users(client, db_sessionmaker, fake_storage, *, prefix="p"
     enough for generate_one_pair to actually find a match."""
     a = await onboard(
         client,
-        f"{prefix}a@{TEST_DOMAIN}",
+        f"{prefix}_a",
         visible_as=["woman"],
         interested_in=["man"],
         store=fake_storage,
     )
     b = await onboard(
         client,
-        f"{prefix}b@{TEST_DOMAIN}",
+        f"{prefix}_b",
         visible_as=["woman"],
         interested_in=["man"],
         store=fake_storage,
     )
     viewer = await onboard(
         client,
-        f"{prefix}v@{TEST_DOMAIN}",
+        f"{prefix}_v",
         visible_as=["man"],
         interested_in=["woman"],
         store=fake_storage,
@@ -145,7 +145,7 @@ async def test_decide_rejects_someone_elses_pairing(client, db_sessionmaker, fak
 
     intruder = await onboard(
         client,
-        f"intruder@{TEST_DOMAIN}",
+        "intruder",
         visible_as=["man"],
         interested_in=["woman"],
         store=fake_storage,
@@ -298,9 +298,9 @@ async def test_pair_key_prevents_repeating_the_same_pair(client, db_sessionmaker
 # ---------------------------------------------------------------------------
 
 
-async def _user_id(db_sessionmaker, email):
+async def _user_id(db_sessionmaker, username):
     async with db_sessionmaker() as db:
-        return (await db.execute(select(User).where(User.email == email))).scalar_one().id
+        return (await db.execute(select(User).where(User.username == username))).scalar_one().id
 
 
 async def _prime_affinity(db_sessionmaker, viewer_id, chosen_id, rejected_id, times):
@@ -334,7 +334,7 @@ async def test_an_ordinary_decision_unlocks_nothing(client, db_sessionmaker, fak
 @pytest.mark.asyncio
 async def test_the_deciding_choice_returns_the_full_profile(client, db_sessionmaker, fake_storage):
     _a, _b, viewer = await _two_mutual_users(client, db_sessionmaker, fake_storage)
-    viewer_id = await _user_id(db_sessionmaker, f"pv@{TEST_DOMAIN}")
+    viewer_id = await _user_id(db_sessionmaker, "p_v")
 
     pair = (await client.get("/api/pairs/next", headers=viewer["headers"])).json()["pair"]
     chosen, rejected = (s["id"] for s in pair["subjects"])
@@ -363,7 +363,7 @@ async def test_an_unlock_never_carries_a_rating_or_an_address(client, db_session
     """The line the whole design rests on: a viewer learns that someone opened
     up, never how anyone is scored, and never anything private."""
     _a, _b, viewer = await _two_mutual_users(client, db_sessionmaker, fake_storage)
-    viewer_id = await _user_id(db_sessionmaker, f"pv@{TEST_DOMAIN}")
+    viewer_id = await _user_id(db_sessionmaker, "p_v")
 
     pair = (await client.get("/api/pairs/next", headers=viewer["headers"])).json()["pair"]
     chosen, rejected = (s["id"] for s in pair["subjects"])
@@ -385,7 +385,7 @@ async def test_an_unlock_never_carries_a_rating_or_an_address(client, db_session
 @pytest.mark.asyncio
 async def test_the_person_passed_over_is_not_unlocked(client, db_sessionmaker, fake_storage):
     _a, _b, viewer = await _two_mutual_users(client, db_sessionmaker, fake_storage)
-    viewer_id = await _user_id(db_sessionmaker, f"pv@{TEST_DOMAIN}")
+    viewer_id = await _user_id(db_sessionmaker, "p_v")
 
     pair = (await client.get("/api/pairs/next", headers=viewer["headers"])).json()["pair"]
     chosen, rejected = (s["id"] for s in pair["subjects"])

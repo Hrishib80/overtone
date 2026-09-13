@@ -13,14 +13,14 @@ making architectural changes.
 ## Current state
 
 Phases 00–06 are complete; phase 07 — calibration and launch — is what is
-left. **366 tests passing**, lint clean, migration round-trips, frontend
+left. **400 tests passing**, lint clean, migration round-trips, frontend
 builds, and the whole loop — pair, unlock, request, reply — has been driven
 end to end in a browser at phone and laptop width.
 
-Email verification is **gone**, and so is every notification: an account is
-active the moment it is created, and the only way anybody learns they have a
-message is a count on the navbar. Both were traded deliberately — see
-*No email, anywhere* and *The shape of the app* below.
+**There is no email anywhere.** An account is a username and a password; it
+is active the moment it is created, and the only way anybody learns they have a
+message is a count on the navbar. All of that was traded deliberately — see
+*No email, anywhere*, *Usernames* and *The shape of the app* below.
 
 ```
 e91479e  Fix consent returning the wrong notice version about 5% of the time
@@ -85,7 +85,8 @@ empty folder — every pair renders as two blank tiles, which reads as a broken
 feature rather than a wrong path. Start it from the repo root, or set
 `MEDIA_ROOT` absolutely.
 
-Demo accounts: `ravi@demo.edu`, `aditi@demo.edu`, … password `overtone2026`.
+Demo accounts sign in by first name, lowercase — `ravi`, `aditi`, … — all
+with password `overtone2026`. `seed_demo.py` prints the full list.
 Ten women and ten men, deliberately balanced: an unlock costs seven
 comparisons of one person and a pair may only be shown once, so a viewer needs
 at least eight candidates before any unlock is reachable. A lopsided pool
@@ -93,9 +94,9 @@ silently makes the whole mechanic impossible for whoever is on the short side
 — twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
-pytest                       # 366 tests, no network, no models needed
+pytest                       # 400 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
-python scripts/manage.py reviewer --email you@example.com   # open the review queue
+python scripts/manage.py reviewer --username you   # open the review queue
 python scripts/check_storage.py  # why uploads are or are not working
 python scripts/check_contrast.py --token "<jwt>"   # text nobody can read, both themes
 python scripts/calibrate.py --sweep   # what the unlock dials cost, before real data
@@ -229,18 +230,32 @@ of a profile.
 
 ### No email, anywhere
 
-**Email verification is gone, and so is the mail stack.** No SMTP, no Google,
-no verification link, no `notify`, no `mail.py`, no `send_email` job. What
-replaced the notification half is the count in the navbar; what replaced the
-verification half is nothing, and that is the part worth being honest about.
+**Email is gone entirely** — not only verification but the address itself. No
+SMTP, no Google, no verification link, no `notify`, no `mail.py`, no
+`send_email` job, and no email field on the join form. What replaced the
+notification half is the count in the navbar; what replaced the identity half
+is a username (see *Usernames*); what replaced the verification half is
+nothing, and that is the part worth being honest about.
 
-**Nothing now proves somebody can read mail at the address they typed.**
-Anyone can register as anyone, and a banned account can come back for the
-price of a new address. Holding the line instead: the 18+ check, blocking,
+**Nothing proves anything about who somebody is.** Anyone can register as
+anyone, and a banned account can come back for the price of a new username,
+which is free. Holding the line instead: the 18+ check, blocking,
 reporting, the review queue, rate limits. If ban evasion becomes real the
 answer is phone verification or invite codes — something that costs the
 attacker something — rather than putting the email round trip back, because a
 mailbox is free.
+
+**A forgotten password is a lost account.** There is nowhere to send a reset.
+The join form and Settings both say so. Do not add a recovery flow that asks
+for an email — that is the removed thing coming back by the side door. If
+recovery is ever needed, the honest shapes are a recovery code shown once at
+signup, or a reviewer resetting it by hand.
+
+**Old addresses are still in `users.email`.** Accounts made before usernames
+keep the address they joined with; the column is nullable, nothing reads it,
+and new accounts leave it empty. Clearing those is a one-line migration and a
+decision somebody should make on purpose — data nobody uses is still data a
+breach would expose.
 
 **The seam is still there.** `users.email_verified_at` and the
 `email_verifications` table are kept: the rows are the record of who verified
@@ -410,8 +425,46 @@ phone verification or invite codes, not bringing the domain back** — the
 domain only ever worked because a second university mailbox is hard to get.
 
 Email verification used to be named here as carrying part of that weight. It
-does not any more — it is gone entirely, and *No email, anywhere* above is the
-honest account of what that costs.
+does not any more — email is gone entirely, and *No email, anywhere* above is
+the honest account of what that costs.
+
+### Usernames
+
+**An account is a username and a password.** The rules live once, in
+`backend/usernames.py` — 3 to 20 characters, lowercase letters, digits, `_`
+and `.`, starting with a letter or digit, no trailing or doubled full stop, and
+a short reserved list (`admin`, `overtone`, `support`, …). The registration
+route, the live availability check and the tests all call it.
+
+**Private, not a handle.** No member ever sees another's username; they see a
+display name. A public username would be a way to find a specific person, which
+on a campus is exactly what a dating app should not hand out. Reviewers see it,
+because a report has to name an account unambiguously.
+`test_other_members_never_see_a_username` scans the profile serialiser for it.
+
+**Case-insensitive by storage, not by query.** Every username is stored
+lowercase, so the plain unique index is already case-insensitive on SQLite and
+Postgres alike. `RaviK` and `ravik` are one account — two that differ by a
+capital are an impersonation waiting to happen — and signing in as `Ravi` on a
+phone keyboard works.
+
+**A wrong username and a wrong password get the same answer**, including a
+name that could never have been registered, so the login form is not a way to
+learn which usernames exist. The availability check *does* reveal that, and
+that is accepted: registration has to refuse a taken name anyway, so the fact
+is one submission away regardless. It is rate-limited per address, loosely.
+
+**The migration gives every old account a name** from the part of its address
+before the `@` (`shri@gmail.com` → `shri`), numbering collisions oldest-first.
+It carries its own copy of the rules rather than importing them, because a
+migration has to keep producing the same result after application code
+changes; `test_the_migration_and_the_app_agree_about_the_rules` checks the two
+copies started identical. Its downgrade refuses if any account has no email to
+fall back to, rather than inventing addresses that look real.
+
+**`AppError` can name a field now** (`AppError(msg, field="username")`), and
+the response carries it in the same `fields` shape a validation error uses —
+so "that username is taken" marks the username box instead of only toasting.
 
 **There is no population boundary at all.** Every active account is in one
 pool. The seam where one would go back is a single `.where(...)` in
@@ -462,7 +515,7 @@ with no reason recorded is indistinguishable from nobody having looked, which
 is the exact failure the queue exists to end. `reviewer_id` is stored too — "a
 human reads it" is only a real promise if the human is named.
 
-**Reviewers are made from the command line** (`manage.py reviewer --email`).
+**Reviewers are made from the command line** (`manage.py reviewer --username`).
 There is deliberately no endpoint: the one account that can suspend other
 people must not be reachable from a surface an attacker already holds a
 session on. `test_nothing_over_http_can_make_a_reviewer` pins that. A
@@ -834,6 +887,19 @@ Each of these cost real debugging time. Do not reintroduce them.
 - **Supabase's transaction pooler (pgbouncer) breaks asyncpg's prepared
   statement cache.** `settings.db_connect_args` disables it when it sees a
   pooler host. Removing that makes every query after the first fail.
+- **`uvicorn --reload` does not reload on this Windows machine, and killing it
+  leaves the server running.** Twice in one session the API kept serving old
+  routes — the SPA's HTML came back for a new endpoint, which reads as a routing
+  bug — because no change was ever detected. Stopping the `uvicorn` process is
+  not enough either: the reloader serves from a child started by
+  `multiprocessing.spawn`, whose command line does not mention uvicorn, and it
+  keeps port 8000 bound after its parent is gone. Find it by parent PID, stop
+  it, and restart without `--reload`; after a backend change, restart by hand.
+- **Log lines that format a field nothing guarantees any more.** Account
+  erasure logged `email_domain=email.rsplit("@")[-1]`, which would have raised
+  on the first account made without an email — so deleting your account
+  would have failed for every new user. Anything that becomes nullable needs a
+  grep for the places that treated it as always there, logs included.
 - **A mandatory scroll-snap eats its own container's padding.** `.deck` has a
   negative margin and matching padding so cards can scroll to the screen edge
   while their contents keep the page gutter — but `scroll-snap-type: x
@@ -1230,7 +1296,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 366 and rising; every bug found gets a regression
+- **Tests are the contract.** 400 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.
@@ -1257,8 +1323,8 @@ an action or introduces content; nothing here loops or decorates.
   | `safety.py` | `safety.py` | blocking and reporting — one file, not enough of either for two |
   | `moderation.py` | `moderation.py` | the review queue, suspension, reinstatement |
 
-- `backend/rating.py`, `backend/preference.py` and `backend/screening.py` stay
-  pure — no session, no clock, no model. That is what lets the arithmetic be tested precisely and the wiring be
+- `backend/rating.py`, `backend/preference.py`, `backend/screening.py` and
+  `backend/usernames.py` stay pure — no session, no clock, no model. That is what lets the arithmetic be tested precisely and the wiring be
   tested separately.
 - Never commit `.env` or `*.db`. Both are gitignored; verify staging anyway.
 - **Stage explicit paths, not `git add -A`.** It swept a favicon and its

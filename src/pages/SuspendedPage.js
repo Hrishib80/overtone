@@ -31,7 +31,7 @@ export default {
       createElement(
         'p',
         { className: 'muted' },
-        'We do not say who reported you. If you think this is wrong, reply to any email we have sent you and a person will read it.'
+        'We do not say who reported you. A suspension is a person’s decision, not an automatic one, and it can be lifted.'
       )
     );
 

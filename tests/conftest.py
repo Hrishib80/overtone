@@ -29,7 +29,6 @@ from backend.handlers import HANDLERS  # noqa: E402
 from backend.seeds import seed_all  # noqa: E402
 
 # Any address works now; this is just the one the tests use.
-TEST_DOMAIN = "example.com"
 ADULT_BIRTHDATE = date(2003, 5, 17)
 
 
@@ -176,7 +175,7 @@ async def client(db_sessionmaker, seeded):
 
 async def register(
     client: AsyncClient,
-    email: str = f"aditi@{TEST_DOMAIN}",
+    username: str = "aditi",
     *,
     birthdate: date = ADULT_BIRTHDATE,
     display_name: str = "Aditi",
@@ -184,7 +183,7 @@ async def register(
     response = await client.post(
         "/api/auth/register",
         json={
-            "email": email,
+            "username": username,
             "password": "a-strong-enough-password",
             "display_name": display_name,
             "birthdate": birthdate.isoformat(),
@@ -196,7 +195,7 @@ async def register(
     return body
 
 
-async def register_and_verify(client: AsyncClient, email: str = f"aditi@{TEST_DOMAIN}", **kw) -> dict:
+async def register_and_verify(client: AsyncClient, username: str = "aditi", **kw) -> dict:
     """Registering *is* the whole of it now — there is no verification step.
 
     The name is kept because roughly a hundred call sites use it and renaming
@@ -204,7 +203,7 @@ async def register_and_verify(client: AsyncClient, email: str = f"aditi@{TEST_DO
     returns an account that is through the door, which is what every caller
     actually wants from it.
     """
-    account = await register(client, email, **kw)
+    account = await register(client, username, **kw)
     assert account["status"] == "onboarding", account
     return account
 
@@ -262,15 +261,15 @@ async def complete_profile(
 
 async def onboard(
     client: AsyncClient,
-    email: str,
+    username: str,
     *,
     visible_as: list[str],
     interested_in: list[str],
     store: dict,
 ) -> dict:
-    """Register, verify, complete the profile, and submit — the full path
-    from a bare email to an admitted (or waitlisted) account."""
-    account = await register_and_verify(client, email)
+    """Register, complete the profile, and submit — the full path from a
+    bare username to an account in the pool."""
+    account = await register_and_verify(client, username)
     await complete_profile(
         client,
         account["headers"],

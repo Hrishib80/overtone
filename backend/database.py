@@ -205,12 +205,23 @@ class User(Base):
     __table_args__ = (Index("ix_users_status", "status"),)
 
     id = Column(String, primary_key=True, default=generate_uuid)
-    email = Column(String, unique=True, index=True, nullable=False)
+    # The account's only identity; the rules live in backend/usernames.py.
+    # Always stored lowercase, which is what makes this unique index a
+    # case-insensitive one on both SQLite and Postgres.
+    username = Column(String, unique=True, index=True, nullable=False)
+    # No longer collected, and nothing reads it. Accounts made before
+    # usernames still carry the address they joined with; the column is kept
+    # nullable rather than dropped so that clearing those is a decision
+    # somebody makes, not a side effect of a rename.
+    email = Column(String, unique=True, index=True, nullable=True)
     password_hash = Column(String, nullable=False)
     display_name = Column(String, nullable=False)
     birthdate = Column(Date, nullable=True)
 
-    status = Column(String, nullable=False, default=UserStatus.pending_verification)
+    # Onboarding, not `pending_verification`: nothing verifies anything, so a
+    # default of a state nothing ever moves an account out of was a trap for
+    # any code path that forgot to set it.
+    status = Column(String, nullable=False, default=UserStatus.onboarding)
 
     email_verified_at = Column(UTCDateTime(), nullable=True)
     last_active_at = Column(UTCDateTime(), nullable=True)
@@ -225,9 +236,9 @@ class User(Base):
     # reachable through the same surface an attacker already has a session on.
     is_reviewer = Column(Boolean, nullable=False, default=False)
 
-    # On by default, because the one email this sends is the one that makes
-    # the product work — somebody wrote to you and is waiting. Turning it off
-    # is one click from inside the email itself; see backend/notify.py.
+    # Left from when a new request sent an email. Nothing sends one now and
+    # nothing reads this; it stays only because dropping a column is a
+    # migration of its own.
     email_notifications = Column(Boolean, nullable=False, default=True)
 
     @property

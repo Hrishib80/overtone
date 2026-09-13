@@ -19,7 +19,7 @@ import pytest_asyncio
 from backend import screening
 from backend.database import MediaAsset, MediaStatus, User
 from backend.ml.base import FaceResult, NudityResult
-from tests.conftest import TEST_DOMAIN, onboard, register_and_verify, run_jobs, upload_media
+from tests.conftest import onboard, register_and_verify, run_jobs, upload_media
 from tests.test_privacy import _uid
 
 CLEAN = FaceResult(ok=True, face_count=1, det_score=0.99, age=27.0)
@@ -121,9 +121,7 @@ async def held(client, db_sessionmaker, fake_storage, monkeypatch):
 
     monkeypatch.setattr(handlers.ml, "screener", lambda: Unsure())
 
-    person = await onboard(
-        client, f"unsure@{TEST_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
-    )
+    person = await onboard(client, "unsure", visible_as=["woman"], interested_in=["man"], store=fake_storage)
     await run_jobs(db_sessionmaker)
     return person
 
@@ -158,9 +156,7 @@ async def test_a_held_photo_keeps_them_out_of_pairs(client, db_sessionmaker, hel
     account simply is not a candidate while it waits."""
     from backend.pairing import _eligible_candidates
 
-    viewer = await onboard(
-        client, f"looker@{TEST_DOMAIN}", visible_as=["man"], interested_in=["woman"], store=fake_storage
-    )
+    viewer = await onboard(client, "looker", visible_as=["man"], interested_in=["woman"], store=fake_storage)
     await run_jobs(db_sessionmaker)
 
     async with db_sessionmaker() as db:
@@ -171,7 +167,7 @@ async def test_a_held_photo_keeps_them_out_of_pairs(client, db_sessionmaker, hel
 
 @pytest.mark.asyncio
 async def test_a_held_photo_reaches_the_queue_with_no_report_behind_it(client, db_sessionmaker, held):
-    reviewer = await register_and_verify(client, f"mod2@{TEST_DOMAIN}")
+    reviewer = await register_and_verify(client, "mod2")
     async with db_sessionmaker() as db:
         user = await db.get(User, _uid(reviewer))
         user.is_reviewer = True
@@ -188,7 +184,7 @@ async def test_a_held_photo_reaches_the_queue_with_no_report_behind_it(client, d
 async def test_approving_a_held_photo_puts_it_back_in_play(client, db_sessionmaker, held, monkeypatch):
     from sqlalchemy import select
 
-    reviewer = await register_and_verify(client, f"mod3@{TEST_DOMAIN}")
+    reviewer = await register_and_verify(client, "mod3")
     async with db_sessionmaker() as db:
         user = await db.get(User, _uid(reviewer))
         user.is_reviewer = True
@@ -229,7 +225,7 @@ async def test_a_human_decision_survives_the_next_automatic_pass(client, db_sess
     put the same photo straight back the next time the job ran."""
     from sqlalchemy import select
 
-    reviewer = await register_and_verify(client, f"mod4@{TEST_DOMAIN}")
+    reviewer = await register_and_verify(client, "mod4")
     async with db_sessionmaker() as db:
         user = await db.get(User, _uid(reviewer))
         user.is_reviewer = True
@@ -266,7 +262,7 @@ async def test_a_human_decision_survives_the_next_automatic_pass(client, db_sess
 async def test_approving_something_that_was_not_held_is_refused(client, db_sessionmaker, held):
     from sqlalchemy import select
 
-    reviewer = await register_and_verify(client, f"mod5@{TEST_DOMAIN}")
+    reviewer = await register_and_verify(client, "mod5")
     async with db_sessionmaker() as db:
         user = await db.get(User, _uid(reviewer))
         user.is_reviewer = True

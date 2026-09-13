@@ -52,7 +52,6 @@ from backend.database import (  # noqa: E402
     UserStatus,
     UserVisibleAs,
     generate_uuid,
-    utcnow,
 )
 from backend.ml.base import FACE_DIM, TEXT_DIM, VOICE_DIM, l2_normalise  # noqa: E402
 
@@ -134,21 +133,19 @@ async def seed(media_root: Path) -> None:
     password_hash = pwd.hash(PASSWORD_HASH_FOR)
 
     async with AsyncSessionLocal() as db:
-        domain = "demo.edu"
         created = 0
 
         for index, (name, visible, interested, school, strength) in enumerate(PEOPLE):
-            email = f"{name.lower()}@{domain}"
-            if (await db.execute(select(User).where(User.email == email))).scalars().first():
+            username = name.lower()
+            if (await db.execute(select(User).where(User.username == username))).scalars().first():
                 continue
 
             user = User(
-                email=email,
+                username=username,
                 password_hash=password_hash,
                 display_name=name,
                 birthdate=date(2003, 1 + index % 12, 1 + index % 27),
                 status=UserStatus.active,
-                email_verified_at=utcnow(),
             )
             db.add(user)
             await db.flush()
@@ -234,9 +231,10 @@ async def seed(media_root: Path) -> None:
 
         await db.commit()
 
-    print(f"Seeded {created} demo people.")
-    print(f"Sign in as any of: {', '.join(n.lower() + '@' + domain for n, *_ in PEOPLE[:3])} …")
-    print(f"Password for all: {PASSWORD_HASH_FOR}")
+    print(f"Seeded {created} demo people. Every one signs in with password {PASSWORD_HASH_FOR}:")
+    print()
+    for name, visible, *_ in PEOPLE:
+        print(f"  {name.lower():<12} {visible}")
 
 
 def main() -> int:

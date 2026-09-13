@@ -430,3 +430,24 @@ section.landing__later {
     padding-block: var(--s-8);
   }
 }
+
+/* The username's live answer. Colour carries the verdict, but never alone —
+   the words say "available" or say what is wrong, so nobody has to tell the
+   green from the red to know which it was. */
+.auth__status {
+  min-height: 1.5em;
+  transition: color 0.15s ease;
+}
+
+/* Qualified with `.field` on purpose: `.field .hint` in base.css sets the muted
+   colour at (0,2,0), so a bare `.auth__status--bad` lost, and "That one is
+   taken" rendered grey under a red border. */
+.field .auth__status--ok {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.field .auth__status--bad {
+  color: var(--red);
+  font-weight: 600;
+}

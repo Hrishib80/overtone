@@ -17,11 +17,11 @@ import pytest_asyncio
 from sqlalchemy import select
 
 from backend.database import MediaAsset, MediaStatus, Report, ReportStatus, User, UserStatus
-from tests.conftest import TEST_DOMAIN, onboard, register_and_verify, run_jobs, upload_media
+from tests.conftest import onboard, register_and_verify, run_jobs, upload_media
 
 
 async def _make_reviewer(db_sessionmaker, user_id: str) -> None:
-    """What `python scripts/manage.py reviewer --email …` does."""
+    """What `python scripts/manage.py reviewer --username …` does."""
     async with db_sessionmaker() as db:
         user = await db.get(User, user_id)
         user.is_reviewer = True
@@ -38,14 +38,10 @@ def _uid(account: dict) -> str:
 async def reported(client, db_sessionmaker, fake_storage):
     """One account with two reports against it, and a reviewer to read them."""
     subject = await onboard(
-        client, f"trouble@{TEST_DOMAIN}", visible_as=["man"], interested_in=["woman"], store=fake_storage
+        client, "trouble", visible_as=["man"], interested_in=["woman"], store=fake_storage
     )
-    first = await onboard(
-        client, f"first@{TEST_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
-    )
-    second = await onboard(
-        client, f"second@{TEST_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
-    )
+    first = await onboard(client, "first", visible_as=["woman"], interested_in=["man"], store=fake_storage)
+    second = await onboard(client, "second", visible_as=["woman"], interested_in=["man"], store=fake_storage)
     await run_jobs(db_sessionmaker)
 
     for reporter, reason in ((first, "harassment"), (second, "harassment")):
@@ -56,7 +52,7 @@ async def reported(client, db_sessionmaker, fake_storage):
         )
         assert filed.status_code == 201, filed.text
 
-    reviewer = await register_and_verify(client, f"mod@{TEST_DOMAIN}")
+    reviewer = await register_and_verify(client, "mod1")
     await _make_reviewer(db_sessionmaker, _uid(reviewer))
     return {"subject": subject, "reviewer": reviewer, "reporters": [first, second]}
 
@@ -96,9 +92,7 @@ async def test_nothing_over_http_can_make_a_reviewer(client, reported):
 
 @pytest.mark.asyncio
 async def test_a_reviewer_sees_the_queue_heaviest_first(client, db_sessionmaker, reported, fake_storage):
-    quiet = await onboard(
-        client, f"quiet@{TEST_DOMAIN}", visible_as=["man"], interested_in=["woman"], store=fake_storage
-    )
+    quiet = await onboard(client, "quiet", visible_as=["man"], interested_in=["woman"], store=fake_storage)
     reporter = reported["reporters"][0]
     await client.post(
         "/api/safety/reports",
@@ -146,9 +140,7 @@ async def test_a_report_can_name_one_photo(client, db_sessionmaker, reported, fa
             .first()
         )
 
-    third = await onboard(
-        client, f"third@{TEST_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
-    )
+    third = await onboard(client, "third", visible_as=["woman"], interested_in=["man"], store=fake_storage)
     filed = await client.post(
         "/api/safety/reports",
         headers=third["headers"],
@@ -343,7 +335,7 @@ async def test_a_suspended_account_can_still_sign_in(client, reported):
 
     signed_in = await client.post(
         "/api/auth/login",
-        json={"email": f"trouble@{TEST_DOMAIN}", "password": "a-strong-enough-password"},
+        json={"username": "trouble", "password": "a-strong-enough-password"},
     )
     assert signed_in.status_code == 200
     assert signed_in.json()["status"] == UserStatus.suspended
@@ -362,7 +354,7 @@ async def test_a_suspended_account_stops_appearing_in_pairs(client, db_sessionma
 
     subject_id = _uid(reported["subject"])
     bystander = await onboard(
-        client, f"nobody@{TEST_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
+        client, "nobody", visible_as=["woman"], interested_in=["man"], store=fake_storage
     )
     await run_jobs(db_sessionmaker)
 

@@ -95,7 +95,7 @@ async def _subject_summary(
         "user": {
             "id": subject.id,
             "display_name": subject.display_name,
-            "email": subject.email,
+            "username": subject.username,
             "status": subject.status,
             "age": subject.age,
             "joined_at": subject.created_at.isoformat() if subject.created_at else None,
@@ -257,7 +257,7 @@ async def read_subject(
         "user": {
             "id": subject.id,
             "display_name": subject.display_name,
-            "email": subject.email,
+            "username": subject.username,
             "status": subject.status,
             "age": subject.age,
             "joined_at": subject.created_at.isoformat() if subject.created_at else None,

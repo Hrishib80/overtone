@@ -84,9 +84,11 @@ LOGIN_PER_ACCOUNT = Limit("login_account", 10, timedelta(minutes=15))
 LOGIN_PER_ADDRESS = Limit("login_address", 120, timedelta(minutes=15))
 REGISTER = Limit("register", 120, timedelta(hours=1))
 
-# Tight per address, because each one sends a real email to somebody who did
-# not ask for it, and loose per network for the campus-NAT reason above.
-RESEND_VERIFICATION = Limit("resend_verification", 5, timedelta(hours=1))
+# The join form asks as somebody types, so a single signup is several of these
+# rather than one. Sized against REGISTER above at about five checks a signup,
+# and per address for the same campus-NAT reason — this one only has to stop a
+# machine walking a wordlist, not a person trying names.
+USERNAME_CHECK = Limit("username_check", 600, timedelta(hours=1))
 
 # Re-entering a password inside an existing session. Separate from the login
 # limiter so that confirming a deletion cannot lock somebody out of signing
@@ -96,7 +98,7 @@ CONFIRM_PASSWORD = Limit("confirm_password", 10, timedelta(minutes=15))
 
 ALL_LIMITS = (
     SEND_REQUEST,
-    RESEND_VERIFICATION,
+    USERNAME_CHECK,
     REPORT,
     UPLOAD_TICKET,
     LOGIN_PER_ACCOUNT,

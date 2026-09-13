@@ -11,7 +11,7 @@ from sqlalchemy import select
 from backend import jobs
 from backend.database import MediaAsset, MediaStatus, ProfileEmbedding
 from backend.ml.base import FACE_DIM, TEXT_DIM, VOICE_DIM
-from tests.conftest import TEST_DOMAIN, complete_profile, give_consent, register_and_verify, run_jobs
+from tests.conftest import complete_profile, give_consent, register_and_verify, run_jobs
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake-image-payload" * 8
 WEBM = b"\x1aE\xdf\xa3" + b"fake-audio-payload" * 8
@@ -196,7 +196,7 @@ async def test_status_reports_outstanding_work(client, verified, fake_storage, d
 @pytest.mark.asyncio
 async def test_media_belongs_to_its_owner(client, verified, fake_storage):
     body = (await request_upload(client, verified["headers"])).json()
-    other = await register_and_verify(client, f"intruder@{TEST_DOMAIN}")
+    other = await register_and_verify(client, "intruder")
 
     response = await client.delete(f"/api/media/{body['asset_id']}", headers=other["headers"])
     assert response.status_code == 404

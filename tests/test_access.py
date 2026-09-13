@@ -1,10 +1,9 @@
 """Who may join.
 
 One rule left: you have to be 18. The campus domain check, the per-segment
-caps and the waitlist are gone, so most of what this file used to assert went
-with them — what is left is the age gate, and a set of tests asserting that
-the door is genuinely open to any address, because that is the change and it
-is the kind of thing a later "tightening" could quietly undo.
+caps and the waitlist are gone, and so is email — an account is a username
+and a password, whose rules have their own file in `test_usernames.py`. What
+is left here is the age gate and the things that must stay gone.
 """
 
 from __future__ import annotations
@@ -12,10 +11,12 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import pytest
+from sqlalchemy import select
 
 from backend import access
+from backend.database import User
 from backend.options import MIN_AGE
-from tests.conftest import TEST_DOMAIN, register
+from tests.conftest import register
 
 
 def _birthdate(age_years: int) -> str:
@@ -57,7 +58,7 @@ async def test_registration_refuses_someone_underage(client):
     response = await client.post(
         "/api/auth/register",
         json={
-            "email": f"young@{TEST_DOMAIN}",
+            "username": "young",
             "password": "a-strong-enough-password",
             "display_name": "Young",
             "birthdate": _birthdate(16),
@@ -68,27 +69,19 @@ async def test_registration_refuses_someone_underage(client):
 
 
 # ---------------------------------------------------------------------------
-# The door is open
+# What must stay gone
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "address",
-    [
-        "someone@gmail.com",
-        "someone@outlook.com",
-        "someone@a-university.edu",
-        "someone@sub.domain.co.in",
-    ],
-)
-async def test_any_address_may_join(client, address):
-    """The change: an ordinary personal account is a first-class way in, not a
-    workaround. Previously every one of these was refused with a 403."""
+async def test_joining_does_not_ask_for_an_email(client, db_sessionmaker):
+    """The change, pinned. A username and a password is the whole of an
+    account; an address sent anyway is ignored rather than stored."""
     response = await client.post(
         "/api/auth/register",
         json={
-            "email": address,
+            "username": "nomail",
+            "email": "someone@gmail.com",
             "password": "a-strong-enough-password",
             "display_name": "Someone",
             "birthdate": _birthdate(21),
@@ -96,29 +89,24 @@ async def test_any_address_may_join(client, address):
     )
     assert response.status_code == 201, response.text
 
+    async with db_sessionmaker() as db:
+        stored = (await db.execute(select(User).where(User.username == "nomail"))).scalar_one()
+    assert stored.email is None
 
-@pytest.mark.asyncio
-async def test_the_same_address_still_cannot_join_twice(client):
-    address = f"twice@{TEST_DOMAIN}"
-    await register(client, address)
-
-    again = await client.post(
-        "/api/auth/register",
-        json={
-            "email": address,
-            "password": "a-strong-enough-password",
-            "display_name": "Again",
-            "birthdate": _birthdate(21),
-        },
-    )
-    assert again.status_code == 409
+    me = (
+        await client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {response.json()['access_token']}"}
+        )
+    ).json()
+    assert "email" not in me
+    assert me["username"] == "nomail"
 
 
 @pytest.mark.asyncio
 async def test_registering_no_longer_reports_a_campus(client):
     """`scope` is gone from the response. A client still reading it would be
     reading something that cannot come back."""
-    body = await register(client, f"nocampus@{TEST_DOMAIN}")
+    body = await register(client, "nocampus")
     assert "scope" not in body
 
 

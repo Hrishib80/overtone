@@ -57,17 +57,21 @@ class Api {
   }
 
   // ---- auth ----
-  register({ email, password, displayName, birthdate }) {
+  register({ username, password, displayName, birthdate }) {
     return this.request('POST', '/api/auth/register', {
-      email,
+      username,
       password,
       display_name: displayName,
       birthdate,
     });
   }
 
-  login(email, password) {
-    return this.request('POST', '/api/auth/login', { email, password });
+  login(username, password) {
+    return this.request('POST', '/api/auth/login', { username, password });
+  }
+
+  checkUsername(name) {
+    return this.request('GET', `/api/auth/username-available?name=${encodeURIComponent(name)}`);
   }
 
   getMe() {

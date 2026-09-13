@@ -18,7 +18,7 @@ import pytest_asyncio
 
 from backend import affinity
 from backend.database import Affinity, AffinityState, ConnectionStatus, utcnow
-from tests.conftest import TEST_DOMAIN, onboard, run_jobs
+from tests.conftest import onboard, run_jobs
 from tests.test_privacy import _uid
 
 
@@ -42,15 +42,13 @@ async def _picks(
 @pytest_asyncio.fixture
 async def star(client, db_sessionmaker, fake_storage):
     """One person, and a crowd who have seen them."""
-    subject = await onboard(
-        client, f"star@{TEST_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
-    )
+    subject = await onboard(client, "star", visible_as=["woman"], interested_in=["man"], store=fake_storage)
     viewers = []
     for i in range(12):
         viewers.append(
             await onboard(
                 client,
-                f"viewer{i}@{TEST_DOMAIN}",
+                f"viewer{i}",
                 visible_as=["man"],
                 interested_in=["woman"],
                 store=fake_storage,

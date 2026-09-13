@@ -215,7 +215,7 @@ def test_pair_key_is_order_independent():
 async def _seed_user(
     db_sessionmaker,
     *,
-    email: str,
+    username: str,
     visible_as: list[str],
     interested_in: list[str],
     face: list[float] | None,
@@ -229,9 +229,9 @@ async def _seed_user(
     upload pipeline (covered separately in test_media.py)."""
     async with db_sessionmaker() as db:
         user = User(
-            email=email,
+            username=username,
             password_hash="x",
-            display_name=email.split("@")[0],
+            display_name=username,
             birthdate=date(2003, 1, 1),
             status=status,
             email_verified_at=utcnow(),
@@ -261,7 +261,7 @@ def rng():
 async def test_generate_one_pair_is_none_without_interested_in(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["woman"],
         interested_in=[],
         face=[1.0, 0.0],
@@ -275,14 +275,14 @@ async def test_generate_one_pair_is_none_without_interested_in(db_sessionmaker, 
 async def test_generate_one_pair_is_none_with_fewer_than_two_candidates(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     await _seed_user(
         db_sessionmaker,
-        email="one@example.com",
+        username="one",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
@@ -296,7 +296,7 @@ async def test_generate_one_pair_is_none_with_fewer_than_two_candidates(db_sessi
 async def test_generate_one_pair_never_includes_the_viewer(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["woman", "man"],
         interested_in=["man"],
         face=[1.0, 0.0],
@@ -304,7 +304,7 @@ async def test_generate_one_pair_never_includes_the_viewer(db_sessionmaker, seed
     for i in range(3):
         await _seed_user(
             db_sessionmaker,
-            email=f"c{i}@example.com",
+            username=f"c{i}",
             visible_as=["man"],
             interested_in=["woman"],
             face=[0.9 - i * 0.05, 0.1],
@@ -327,15 +327,15 @@ async def test_everybody_is_in_one_pool(db_sessionmaker, seeded, rng):
     """
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
-    for address in ("lookalike@gmail.com", "another@some-college.ac.in"):
+    for name in ("lookalike", "another"):
         await _seed_user(
             db_sessionmaker,
-            email=address,
+            username=name,
             visible_as=["woman"],
             interested_in=["man"],
             face=[1.0, 0.0],
@@ -355,14 +355,14 @@ async def test_visibility_must_be_mutual_not_one_sided(db_sessionmaker, seeded, 
     join would otherwise find them."""
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     await _seed_user(
         db_sessionmaker,
-        email="uninterested@example.com",
+        username="uninterested",
         visible_as=["woman"],
         interested_in=["nonbinary"],  # not interested in "man" — the viewer's segment
         face=[0.99, 0.1],
@@ -377,28 +377,28 @@ async def test_visibility_must_be_mutual_not_one_sided(db_sessionmaker, seeded, 
 async def test_a_candidate_without_a_face_embedding_is_excluded(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     await _seed_user(
         db_sessionmaker,
-        email="nophoto@example.com",
+        username="nophoto",
         visible_as=["woman"],
         interested_in=["man"],
         face=None,
     )
     await _seed_user(
         db_sessionmaker,
-        email="hasphoto@example.com",
+        username="hasphoto",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     await _seed_user(
         db_sessionmaker,
-        email="alsohasphoto@example.com",
+        username="alsohasphoto",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -416,14 +416,14 @@ async def test_a_candidate_without_a_face_embedding_is_excluded(db_sessionmaker,
 async def test_a_deleted_user_is_excluded(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     await _seed_user(
         db_sessionmaker,
-        email="gone@example.com",
+        username="gone",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.95, 0.1],
@@ -431,14 +431,14 @@ async def test_a_deleted_user_is_excluded(db_sessionmaker, seeded, rng):
     )
     await _seed_user(
         db_sessionmaker,
-        email="here@example.com",
+        username="here",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
     )
     await _seed_user(
         db_sessionmaker,
-        email="alsohere@example.com",
+        username="alsohere",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.4, 0.6],
@@ -456,7 +456,7 @@ async def test_a_deleted_user_is_excluded(db_sessionmaker, seeded, rng):
 async def test_the_same_pair_is_never_generated_twice_for_one_viewer(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
@@ -464,7 +464,7 @@ async def test_the_same_pair_is_never_generated_twice_for_one_viewer(db_sessionm
     for i in range(5):
         await _seed_user(
             db_sessionmaker,
-            email=f"c{i}@example.com",
+            username=f"c{i}",
             visible_as=["woman"],
             interested_in=["man"],
             face=[0.9 - i * 0.1, 0.1 + i * 0.05],
@@ -486,7 +486,7 @@ async def test_the_same_pair_is_never_generated_twice_for_one_viewer(db_sessionm
 async def test_next_pair_generates_when_nothing_is_queued(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
@@ -494,7 +494,7 @@ async def test_next_pair_generates_when_nothing_is_queued(db_sessionmaker, seede
     for i in range(3):
         await _seed_user(
             db_sessionmaker,
-            email=f"c{i}@example.com",
+            username=f"c{i}",
             visible_as=["woman"],
             interested_in=["man"],
             face=[0.9 - i * 0.1, 0.1],
@@ -514,7 +514,7 @@ async def test_next_pair_generates_when_nothing_is_queued(db_sessionmaker, seede
 async def test_next_pair_is_none_when_nobody_is_eligible(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
@@ -533,7 +533,7 @@ async def test_next_pair_resumes_an_undecided_pairing_instead_of_generating_a_ne
     second — the two calls have to be idempotent."""
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
@@ -541,7 +541,7 @@ async def test_next_pair_resumes_an_undecided_pairing_instead_of_generating_a_ne
     for i in range(3):
         await _seed_user(
             db_sessionmaker,
-            email=f"c{i}@example.com",
+            username=f"c{i}",
             visible_as=["woman"],
             interested_in=["man"],
             face=[0.9 - i * 0.1, 0.1],
@@ -578,21 +578,21 @@ async def test_next_pair_resumes_an_undecided_pairing_instead_of_generating_a_ne
 async def test_next_pair_promotes_a_due_round_two_over_generating_a_new_pair(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        email="a@example.com",
+        username="a",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        email="b@example.com",
+        username="b",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -625,21 +625,21 @@ async def test_next_pair_promotes_a_due_round_two_over_generating_a_new_pair(db_
 async def test_next_pair_does_not_promote_a_round_two_before_it_is_due(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        email="a@example.com",
+        username="a",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        email="b@example.com",
+        username="b",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -672,21 +672,21 @@ async def test_next_pair_does_not_promote_a_round_two_before_it_is_due(db_sessio
 async def test_record_decision_moves_ratings_the_way_apply_comparison_would(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        email="a@example.com",
+        username="a",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        email="b@example.com",
+        username="b",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -736,21 +736,21 @@ async def test_record_decision_moves_ratings_the_way_apply_comparison_would(db_s
 async def test_a_round_one_decision_schedules_a_round_two(db_sessionmaker, seeded):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        email="a@example.com",
+        username="a",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        email="b@example.com",
+        username="b",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -797,21 +797,21 @@ async def test_a_round_one_decision_schedules_a_round_two(db_sessionmaker, seede
 async def test_a_round_two_decision_does_not_schedule_another_round_two(db_sessionmaker, seeded):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        email="a@example.com",
+        username="a",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        email="b@example.com",
+        username="b",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -846,28 +846,28 @@ async def test_a_round_two_decision_does_not_schedule_another_round_two(db_sessi
 async def test_record_decision_rejects_the_wrong_viewer(db_sessionmaker, seeded):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     intruder_id = await _seed_user(
         db_sessionmaker,
-        email="intruder@example.com",
+        username="intruder",
         visible_as=["man"],
         interested_in=["woman"],
         face=[0.5, 0.5],
     )
     a = await _seed_user(
         db_sessionmaker,
-        email="a@example.com",
+        username="a",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        email="b@example.com",
+        username="b",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -896,7 +896,7 @@ async def test_record_decision_rejects_the_wrong_viewer(db_sessionmaker, seeded)
 async def test_record_decision_rejects_an_unknown_pairing(db_sessionmaker, seeded):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
@@ -911,21 +911,21 @@ async def test_record_decision_rejects_an_unknown_pairing(db_sessionmaker, seede
 async def test_record_decision_rejects_an_already_decided_pairing(db_sessionmaker, seeded):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        email="a@example.com",
+        username="a",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        email="b@example.com",
+        username="b",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -955,21 +955,21 @@ async def test_record_decision_rejects_an_already_decided_pairing(db_sessionmake
 async def test_record_decision_rejects_a_choice_outside_the_pair(db_sessionmaker, seeded):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        email="a@example.com",
+        username="a",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        email="b@example.com",
+        username="b",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -998,28 +998,28 @@ async def test_record_decision_rejects_a_choice_outside_the_pair(db_sessionmaker
 async def test_expire_stale_round_two_only_touches_pending_rows_past_the_window(db_sessionmaker, seeded):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        email="a@example.com",
+        username="a",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        email="b@example.com",
+        username="b",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
     )
     c = await _seed_user(
         db_sessionmaker,
-        email="c@example.com",
+        username="c",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.4, 0.4],
@@ -1166,7 +1166,7 @@ async def test_generate_one_pair_re_anchors_on_a_picked_subject(db_sessionmaker,
     """
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["woman"],
         interested_in=["man"],
         face=[1.0, 0.0],
@@ -1174,7 +1174,7 @@ async def test_generate_one_pair_re_anchors_on_a_picked_subject(db_sessionmaker,
     subjects = [
         await _seed_user(
             db_sessionmaker,
-            email=f"c{i}@example.com",
+            username=f"c{i}",
             visible_as=["man"],
             interested_in=["woman"],
             face=[1.0 - i * 0.01, i * 0.01],
@@ -1216,21 +1216,21 @@ async def test_only_round_one_trains_the_preference_model(db_sessionmaker, seede
     """
     viewer_id = await _seed_user(
         db_sessionmaker,
-        email="v@example.com",
+        username="v",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        email="a@example.com",
+        username="a",
         visible_as=["woman"],
         interested_in=["man"],
         face=[1.0, 0.0],
     )
     b = await _seed_user(
         db_sessionmaker,
-        email="b@example.com",
+        username="b",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.0, 1.0],

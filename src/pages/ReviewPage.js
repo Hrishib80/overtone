@@ -159,7 +159,7 @@ export default {
           'p',
           { className: 'review__muted' },
           [
-            detail.user.email,
+            detail.user.username ? `@${detail.user.username}` : null,
             detail.user.age ? `${detail.user.age}` : null,
             `joined ${when(detail.user.joined_at)}`,
             detail.user.status,

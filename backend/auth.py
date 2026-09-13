@@ -1,19 +1,21 @@
 """Registration, login, and the token dependency.
 
-There is no email verification. It was removed deliberately, and the trade is
-worth stating where somebody will read it before putting this in front of real
-people: nothing now proves that the person signing up can read mail at the
-address they typed. Anyone can register as anyone, and a banned account can
-come back for the price of a new address.
+An account is a username and a password, and nothing else. There is no email
+— not for verification, not for notifications, not as a login — so the rules
+for what a username may be live in `backend/usernames.py` and this module only
+applies them.
 
-What is left holding the line: the 18+ check, blocking, reporting, the review
-queue, and rate limits. If ban evasion becomes real, the answer is phone
-verification or invite codes — something that costs the attacker something —
-rather than putting the email round trip back, because a mailbox is free.
+Two trades worth stating where somebody will read them before putting this in
+front of real people:
 
-The seam is still here. `users.email_verified_at` exists and is never set; the
-gate that used to read it is gone from `profile.submit`. Turning verification
-back on means re-adding a channel to send on and restoring that check.
+* **Nothing proves who anybody is.** A banned account comes back for the price
+  of a new username, which is free. What holds the line is the 18+ check,
+  blocking, reporting, the review queue and rate limits. If ban evasion becomes
+  real the answer is phone verification or invite codes — something that costs
+  the attacker something.
+* **A forgotten password is a lost account.** There is no address to send a
+  reset to. The join form says so; do not quietly add a recovery flow that
+  asks for an email, because that brings back the thing that was removed.
 """
 
 from __future__ import annotations
@@ -23,12 +25,12 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, Header, Request
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend import access
+from backend import access, usernames
 from backend.config import settings
 from backend.database import (
     Profile,
@@ -37,12 +39,13 @@ from backend.database import (
     get_db,
     utcnow,
 )
-from backend.errors import Conflict, NotAuthenticated, NotAuthorized
+from backend.errors import AppError, Conflict, NotAuthenticated, NotAuthorized
 from backend.logging_config import get_logger
 from backend.ratelimit import (
     LOGIN_PER_ACCOUNT,
     LOGIN_PER_ADDRESS,
     REGISTER,
+    USERNAME_CHECK,
     client_key,
     consume,
 )
@@ -60,10 +63,10 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
-def create_access_token(user_id: str, email: str) -> str:
+def create_access_token(user_id: str, username: str) -> str:
     payload = {
         "sub": user_id,
-        "email": email,
+        "username": username,
         "exp": utcnow() + timedelta(hours=settings.jwt_expiry_hours),
         "iat": utcnow(),
     }
@@ -86,9 +89,8 @@ async def require_auth(authorization: str | None = Header(default=None)) -> str:
 
 # How stale `last_active_at` has to be before a request is worth a write. Every
 # authenticated request could update it, but that is a write per read for a
-# column accurate to the second when nothing needs better than the minute —
-# and what needs it at all is `notify`, deciding whether somebody is sitting
-# in the app right now and should be left alone.
+# column accurate to the second when nothing needs better than the minute.
+# Nothing reads it today; it is kept as the seam for presence in chat.
 ACTIVITY_RESOLUTION = timedelta(minutes=5)
 
 
@@ -99,8 +101,8 @@ async def current_user(user_id: str = Depends(require_auth), db: AsyncSession = 
 
     # Recorded here rather than at login, because a login is not activity —
     # people stay signed in for weeks, and "last seen" taken from the last
-    # sign-in would have told `notify` that a person reading their inbox right
-    # now was last here on Tuesday.
+    # sign-in would say a person reading their inbox right now was last here
+    # on Tuesday.
     now = utcnow()
     if user.last_active_at is None or now - user.last_active_at > ACTIVITY_RESOLUTION:
         user.last_active_at = now
@@ -138,15 +140,52 @@ def verify_ws_token(token: str) -> str | None:
 
 
 class RegisterRequest(BaseModel):
-    email: EmailStr
+    # Loose here on purpose: the real rules are in `usernames.problem`, which
+    # says *what* is wrong in words a person can act on. A pydantic pattern
+    # would reject the same input with a regex in the error message.
+    username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=8, max_length=128)
     display_name: str = Field(min_length=1, max_length=80)
     birthdate: date
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=128)
+
+
+def _username_or_refuse(raw: str) -> str:
+    name = usernames.normalise(raw)
+    reason = usernames.problem(name)
+    if reason:
+        raise AppError(reason, field="username")
+    return name
+
+
+@router.get("/username-available")
+async def username_available(
+    name: str, request: Request, db: AsyncSession = Depends(get_db)
+) -> dict[str, object]:
+    """Whether a username can be taken, asked while somebody is still typing.
+
+    This does say whether an account exists under a name, and that is worth
+    being honest about: registration has to refuse a taken name anyway, so the
+    same fact is one form submission away regardless. Usernames are private —
+    no member ever sees another's — which keeps this a login handle rather than
+    a directory. Counted per address, loosely, for the campus-NAT reason in
+    backend/ratelimit.py.
+    """
+    await consume(db, USERNAME_CHECK, client_key(request))
+    normalised = usernames.normalise(name)
+    reason = usernames.problem(normalised)
+    if reason:
+        return {"username": normalised, "available": False, "reason": reason}
+    taken = (await db.execute(select(User.id).where(User.username == normalised))).first()
+    return {
+        "username": normalised,
+        "available": taken is None,
+        "reason": "That one is taken." if taken else None,
+    }
 
 
 @router.post("/register", status_code=201)
@@ -155,13 +194,13 @@ async def register(
 ) -> dict[str, object]:
     # Counted per address, since there is no account to count against yet.
     await consume(db, REGISTER, client_key(request))
-    email = req.email.strip().lower()
+    username = _username_or_refuse(req.username)
 
     # Refuses before an account exists.
     access.check_age(req.birthdate)
 
     user = User(
-        email=email,
+        username=username,
         password_hash=hash_password(req.password),
         display_name=req.display_name.strip(),
         birthdate=req.birthdate,
@@ -173,7 +212,8 @@ async def register(
         await db.flush()
     except IntegrityError:
         await db.rollback()
-        raise Conflict("That email is already registered.") from None
+        # The unique index is the real check; looking first would race.
+        raise Conflict("That username is taken.", field="username") from None
 
     db.add(Profile(user_id=user.id))
     await db.commit()
@@ -182,7 +222,7 @@ async def register(
     log.info("user_registered", user_id=user.id)
 
     return {
-        "access_token": create_access_token(user.id, user.email),
+        "access_token": create_access_token(user.id, user.username),
         "token_type": "bearer",
         "status": user.status,
     }
@@ -190,25 +230,28 @@ async def register(
 
 @router.post("/login")
 async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)) -> dict[str, object]:
-    email = req.email.strip().lower()
+    # Normalised but not validated: a name that could never be registered
+    # gets the same answer as a wrong password, rather than a hint that it
+    # was the username that was wrong.
+    username = usernames.normalise(req.username)
     # Per account first, because that is where a brute-force attempt is
     # aimed and it is the limit that can afford to be tight. The per-address
     # one is loose on purpose — see the note in backend/ratelimit.py about
     # what a campus NAT does to an address-keyed limit.
-    await consume(db, LOGIN_PER_ACCOUNT, f"email:{email}")
+    await consume(db, LOGIN_PER_ACCOUNT, f"username:{username}")
     await consume(db, LOGIN_PER_ADDRESS, client_key(request))
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(select(User).where(User.username == username))
     user = result.scalars().first()
 
     if not user or user.deleted_at is not None or not verify_password(req.password, user.password_hash):
-        raise NotAuthenticated("Incorrect email or password.")
+        raise NotAuthenticated("Incorrect username or password.")
 
     user.last_active_at = utcnow()
     await db.commit()
 
     log.info("user_logged_in", user_id=user.id)
     return {
-        "access_token": create_access_token(user.id, user.email),
+        "access_token": create_access_token(user.id, user.username),
         "token_type": "bearer",
         "status": user.status,
     }
@@ -218,11 +261,10 @@ async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(
 async def get_me(user: User = Depends(current_user)) -> dict[str, object]:
     return {
         "id": user.id,
-        "email": user.email,
+        "username": user.username,
         "display_name": user.display_name,
         "age": user.age,
         "status": user.status,
-        "email_verified": user.email_verified_at is not None,
         "avatar_url": user.avatar_url,
         # So the app knows whether to offer the queue. It is a hint for the
         # interface only — every moderation route checks the column itself.

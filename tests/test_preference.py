@@ -142,12 +142,12 @@ def test_zero_strength_switches_the_model_off_entirely():
 # ---------------------------------------------------------------------------
 
 
-async def _seed(db_sessionmaker, email, face):
+async def _seed(db_sessionmaker, username, face):
     async with db_sessionmaker() as db:
         user = User(
-            email=email,
+            username=username,
             password_hash="x",
-            display_name=email.split("@")[0],
+            display_name=username,
             birthdate=date(2003, 1, 1),
             email_verified_at=utcnow(),
         )
@@ -161,9 +161,9 @@ async def _seed(db_sessionmaker, email, face):
 
 @pytest_asyncio.fixture
 async def faces(db_sessionmaker, seeded):
-    viewer = await _seed(db_sessionmaker, "v@example.com", None)
-    left = await _seed(db_sessionmaker, "left@example.com", LIKES_LEFT)
-    right = await _seed(db_sessionmaker, "right@example.com", LIKES_RIGHT)
+    viewer = await _seed(db_sessionmaker, "v", None)
+    left = await _seed(db_sessionmaker, "left", LIKES_LEFT)
+    right = await _seed(db_sessionmaker, "right", LIKES_RIGHT)
     return viewer, left, right
 
 
@@ -209,7 +209,7 @@ async def test_a_missing_face_is_skipped_rather_than_guessed(db_sessionmaker, se
     """A photo that has not finished processing is still a valid comparison
     for rating purposes — it just has nothing here to learn from."""
     viewer, left, _right = faces
-    faceless = await _seed(db_sessionmaker, "pending@example.com", None)
+    faceless = await _seed(db_sessionmaker, "pending", None)
 
     async with db_sessionmaker() as db:
         skipped = await observe(db, viewer_id=viewer, segment="woman", chosen_id=left, rejected_id=faceless)

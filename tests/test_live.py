@@ -34,7 +34,7 @@ import pytest_asyncio
 
 from backend import bus, signaling
 from backend.database import ChatMessage, ConnectionStatus
-from tests.conftest import TEST_DOMAIN, onboard, run_jobs
+from tests.conftest import onboard, run_jobs
 from tests.test_privacy import _uid
 
 
@@ -103,12 +103,8 @@ async def test_a_subscriber_that_stopped_reading_cannot_stall_a_publisher():
 @pytest_asyncio.fixture
 async def talking(client, db_sessionmaker, fake_storage):
     """Two people with an open conversation between them."""
-    her = await onboard(
-        client, f"her@{TEST_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
-    )
-    him = await onboard(
-        client, f"him@{TEST_DOMAIN}", visible_as=["man"], interested_in=["woman"], store=fake_storage
-    )
+    her = await onboard(client, "her", visible_as=["woman"], interested_in=["man"], store=fake_storage)
+    him = await onboard(client, "him", visible_as=["man"], interested_in=["woman"], store=fake_storage)
     await run_jobs(db_sessionmaker)
 
     from backend.database import Connection, pair_key
@@ -338,7 +334,7 @@ async def test_a_stranger_is_refused_the_room(socket_room, client, fake_storage)
     `_is_participant` directly and trusting the route to also call it."""
     outsider = await onboard(
         client,
-        f"cara@{TEST_DOMAIN}",
+        "cara",
         visible_as=["woman"],
         interested_in=["man"],
         store=fake_storage,

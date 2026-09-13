@@ -43,7 +43,6 @@ from backend.database import (
     utcnow,
 )
 from tests.conftest import (
-    TEST_DOMAIN,
     give_consent,
     onboard,
     run_jobs,
@@ -162,7 +161,7 @@ async def test_a_reworded_notice_has_to_be_agreed_to_again(client, verified, db_
 async def test_withdrawing_deletes_the_face_vector(client, db_sessionmaker, fake_storage):
     person = await onboard(
         client,
-        f"withdraws@{TEST_DOMAIN}",
+        "withdraws",
         visible_as=["woman"],
         interested_in=["man"],
         store=fake_storage,
@@ -224,12 +223,8 @@ async def _a_life(client, db_sessionmaker, fake_storage):
     coverage of every table that keys on a user — including the ones that are
     slow or awkward to reach through the product.
     """
-    mine = await onboard(
-        client, f"leaving@{TEST_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
-    )
-    theirs = await onboard(
-        client, f"staying@{TEST_DOMAIN}", visible_as=["man"], interested_in=["woman"], store=fake_storage
-    )
+    mine = await onboard(client, "leaving", visible_as=["woman"], interested_in=["man"], store=fake_storage)
+    theirs = await onboard(client, "staying", visible_as=["man"], interested_in=["woman"], store=fake_storage)
     await run_jobs(db_sessionmaker)
 
     me, them = _uid(mine), _uid(theirs)

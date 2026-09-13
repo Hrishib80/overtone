@@ -14,14 +14,14 @@ from sqlalchemy import select
 from backend.affinity import apply_decision
 from backend.connections import on_unlock
 from backend.database import ChatMessage, Connection, ConnectionStatus, User
-from tests.conftest import TEST_DOMAIN, onboard
+from tests.conftest import onboard
 
 UNLOCK_RUN = 7  # the fastest possible unlock; see test_affinity.py
 
 
-async def _user_id(db_sessionmaker, email):
+async def _user_id(db_sessionmaker, username):
     async with db_sessionmaker() as db:
-        return (await db.execute(select(User).where(User.email == email))).scalar_one().id
+        return (await db.execute(select(User).where(User.username == username))).scalar_one().id
 
 
 async def _force_unlock(db_sessionmaker, viewer_id, subject_id, foil_id):
@@ -44,28 +44,28 @@ def scene():
     async def build(client, db_sessionmaker, fake_storage):
         ada = await onboard(
             client,
-            f"ada@{TEST_DOMAIN}",
+            "ada",
             visible_as=["woman"],
             interested_in=["man"],
             store=fake_storage,
         )
         foil = await onboard(
             client,
-            f"foil@{TEST_DOMAIN}",
+            "foil",
             visible_as=["woman"],
             interested_in=["man"],
             store=fake_storage,
         )
         ben = await onboard(
             client,
-            f"ben@{TEST_DOMAIN}",
+            "ben",
             visible_as=["man"],
             interested_in=["woman"],
             store=fake_storage,
         )
-        ada["id"] = await _user_id(db_sessionmaker, f"ada@{TEST_DOMAIN}")
-        foil["id"] = await _user_id(db_sessionmaker, f"foil@{TEST_DOMAIN}")
-        ben["id"] = await _user_id(db_sessionmaker, f"ben@{TEST_DOMAIN}")
+        ada["id"] = await _user_id(db_sessionmaker, "ada")
+        foil["id"] = await _user_id(db_sessionmaker, "foil")
+        ben["id"] = await _user_id(db_sessionmaker, "ben")
         return ada, foil, ben
 
     return build
