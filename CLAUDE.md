@@ -985,8 +985,17 @@ an action or introduces content; nothing here loops or decorates.
 - **Stage explicit paths, not `git add -A`.** It swept a favicon and its
   `<link>` line into an unrelated commit twice in one session. `git status`
   before staging is the habit; naming the files is the fix.
-- **Re-exported `src/styles/overtone_favcon.png`? Run
-  `python scripts/make_icons.py`.** The 1024px master is the source; `public/`
-  holds the derived sizes a browser asks for, and they are committed rather
-  than built so a deploy never needs Pillow. They silently go stale otherwise —
-  it happened twice.
+- **The mark is drawn, not exported.** `scripts/make_mark.py` writes both
+  1024px masters and `scripts/make_icons.py` cuts `public/` from them, in that
+  order. The derived files are committed rather than built, so a deploy never
+  needs Pillow — and they silently go stale otherwise, which happened twice.
+  Replacing the artwork with a real export means dropping it over
+  `overtone_favcon.png` and running **only** `make_icons.py`; `make_mark.py`
+  would paint over it.
+- **The tab icon is a different drawing from the big one, on purpose.** The
+  mark stripes the lens where its two circles overlap, which is the best part
+  of it at 1024px and the first thing to die at 16: nine bands average into
+  one brown smear. The small cut drops the stripes and overlaps harder — the
+  mark is a landscape shape in a square box, so tightening it is worth about
+  three pixels of circle height at tab size. Check any new artwork at 16px
+  magnified before believing it works; it is not a small version of itself.
