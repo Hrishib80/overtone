@@ -224,7 +224,8 @@
   border: 0;
   border-radius: 50%;
   background: var(--blue);
-  color: #fff;
+  /* --blue is a pale sky in dark mode; white on it is 2.1:1. */
+  color: var(--on-accent);
   font-size: 20px;
   cursor: pointer;
 }
@@ -359,7 +360,7 @@
 
 .toast--error {
   background: var(--red);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 @keyframes toast-in {

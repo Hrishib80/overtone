@@ -290,7 +290,9 @@ a {
 .chip[aria-pressed='true'] {
   background: var(--red);
   border-color: var(--red);
-  color: #fff;
+  /* Not #fff: --red inverts to a light coral in dark mode, where white
+     on it is 3.4:1. --on-accent is the colour that goes on a fill. */
+  color: var(--on-accent);
 }
 
 .chip--blue[aria-pressed='true'] {

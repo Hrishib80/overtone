@@ -17,6 +17,14 @@
      and the comparison both sit on it, and a pale neutral in between makes
      the app look like two products. */
   --sky: #7fb8ea;
+  /* The two ends of the landing page's ground. They are tokens rather than
+     literals in the gradient because a gradient written in hex does not flip
+     with the theme — the ground stayed light in dark mode while the text on
+     it went light too, which is how the wordmark disappeared. Both ends are
+     chosen so --on-sky-soft clears 4.5:1 against them, not just against the
+     midpoint. */
+  --sky-high: #b4d8f6;
+  --sky-low: #74afdf;
   --cyan: #d8fdff;
 
   /* Text on the sky. White is the display voice and is deliberately
@@ -97,6 +105,8 @@
     /* The same surface, taken down to something that can be looked at in
        the dark. White display type still reads on it. */
     --sky: #12283f;
+    --sky-high: #1b3a5a;
+    --sky-low: #0a1724;
     --on-sky: #ffffff;
     --on-sky-soft: #a8cff2;
 
@@ -130,6 +140,8 @@
   --rule-strong: #33475a;
 
   --sky: #12283f;
+  --sky-high: #1b3a5a;
+  --sky-low: #0a1724;
   --on-sky: #ffffff;
   --on-sky-soft: #a8cff2;
   --on-accent: #071019;

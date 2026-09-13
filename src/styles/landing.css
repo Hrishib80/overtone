@@ -15,8 +15,12 @@
   min-height: 100dvh;
   /* Light at the top where the heading sits, deepening as you go — so the
      page has a direction and the sections below read as further in rather
-     than as more of the same. */
-  background: radial-gradient(130% 80% at 50% 0%, #b4d8f6 0%, var(--sky) 44%, #5b9cd4 100%);
+     than as more of the same.
+
+     Every stop is a token. Written as hex, the ground could not follow the
+     theme: in dark mode it stayed pale blue while the text on it turned pale
+     blue too, and the wordmark vanished. */
+  background: radial-gradient(130% 80% at 50% 0%, var(--sky-high) 0%, var(--sky) 44%, var(--sky-low) 100%);
   color: var(--on-sky-soft);
   overflow-x: hidden;
 }
@@ -334,13 +338,15 @@ section.landing__later {
   text-align: center;
 }
 
+/* No opacity here. It is the smallest text on the page and sits at the
+   darkest end of the ground, so fading it was spending the contrast twice —
+   quiet comes from size, not from transparency. */
 .landing__fine {
   margin: 0;
   max-width: 56ch;
   font-size: var(--t--1);
   line-height: 1.6;
   color: var(--on-sky-soft);
-  opacity: 0.85;
   text-wrap: pretty;
 }
 

@@ -746,7 +746,23 @@ Each of these cost real debugging time. Do not reintroduce them.
   landing page reports false positives).
 - **Accent fills need `--on-accent`, not `#fff`.** The palette inverts between
   themes — dark red becomes light red — so hardcoded white heads for
-  white-on-pale in dark mode.
+  white-on-pale in dark mode. Measured: white on dark-mode `--red` is 3.4:1
+  and on dark-mode `--blue` is **2.1:1**; `--on-accent` gives 5.7 and 9.1. It
+  came back three more times after being written down once (a chip, the
+  recorder button, the error toast), so grep for `color: #fff` before
+  believing it is gone. White *is* right over a fixed dark scrim like
+  `rgba(11, 20, 32, 0.82)`, which does not invert — that is the only case.
+- **A gradient written in hex does not follow the theme.** The landing ground
+  was `radial-gradient(…, #b4d8f6, var(--sky), #5b9cd4)` — one token and two
+  literals. In dark mode the middle flipped to navy and the two ends stayed
+  pale blue, while every piece of text on it flipped to *light* blue, so the
+  wordmark and half the copy went invisible. Both ends are now `--sky-high` /
+  `--sky-low`, defined in all three theme blocks. Any colour in a gradient is
+  still a colour and still needs a token.
+- **Check both ends of a gradient, not the midpoint.** `--on-sky-soft` clears
+  5.5:1 against `--sky` itself, which is the number in the palette note — but
+  the old bottom stop was darker and took the fine print down to 3.97:1. The
+  stops are now chosen so the *worst* point clears 4.5:1.
 - **Grid blowout: a `white-space: nowrap` element sets a floor under every
   track above it.** `.row__preview` made the whole inbox 522px wide inside a
   390px phone — `min-width: 0` on the flex child is not enough, because the
@@ -851,9 +867,10 @@ the motion conventions below.
 Still open:
 - **Nobody has seen this on a real phone.** It is verified at 320, 390 and
   1440 in Chromium, which is not the same as a mid-range Android in daylight.
-- The two-pole palette is carried everywhere, but nothing has been checked
-  against a real dark-mode device either — the tokens redefine, the screens
-  have only been looked at in light.
+- **Only the landing page and the auth panel have been checked in dark
+  mode.** They were both broken there until they were looked at, which is the
+  argument for looking at the rest: pairs, inbox, onboarding, settings and
+  review have never been rendered in dark at all.
 
 **Motion conventions, now that there are some.** Entrances are 260–440ms on
 `cubic-bezier(0.22, 1, 0.36, 1)`, staggered 40–70ms per item via a `.rise`
