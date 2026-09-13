@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend import connections
+from backend import connections, signaling
 from backend.auth import require_member
 from backend.database import User, get_db
 from backend.logging_config import get_logger
@@ -94,6 +94,10 @@ async def create_message(
     message = await connections.post_message(db, sender=user, connection_id=connection_id, text=body.text)
     payload = connections.serialise_message(message, user.id)
     await db.commit()
+    # After the commit, never before: an event announcing a message that then
+    # failed to save would put text on the other person's screen that does not
+    # exist. Fan-out is best-effort and must not fail the send either way.
+    await signaling.message_sent(connection_id, payload, user.id)
     return payload
 
 
@@ -117,4 +121,8 @@ async def mark_read(
 ) -> dict[str, int]:
     count = await connections.mark_read(db, user=user, connection_id=connection_id)
     await db.commit()
+    # Only when something actually changed: re-opening a thread you have
+    # already read should not keep nudging the other person's ticks.
+    if count:
+        await signaling.read_up_to(connection_id, user.id)
     return {"marked_read": count}

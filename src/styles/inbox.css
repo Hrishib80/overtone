@@ -701,6 +701,57 @@
   padding-inline: var(--s-2);
 }
 
+/* Read, said with a mark rather than a colour change — the bubble is already
+   carrying the blue, and a second meaning on the same property reads as one
+   of them being broken. */
+.bubble-row--mine.is-read .bubble::after {
+  content: '✓✓';
+  display: inline-block;
+  margin-left: var(--s-2);
+  font-size: 0.62rem;
+  letter-spacing: -0.12em;
+  opacity: 0.7;
+  vertical-align: 1px;
+}
+
+/* Typing, in the place the next message will appear, because that is what it
+   is announcing. */
+.thread__typing {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: var(--s-3) var(--s-4);
+  border-radius: 16px 16px 16px 4px;
+  background: var(--surface-2);
+}
+
+.thread__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: thread-dot 1.2s ease-in-out infinite;
+}
+
+.thread__dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.thread__dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes thread-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+
 .thread__foot {
   padding-top: var(--s-3);
   border-top: 1px solid var(--rule);

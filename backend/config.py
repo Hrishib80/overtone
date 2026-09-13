@@ -88,6 +88,11 @@ class Settings(BaseSettings):
     smtp_use_starttls: bool = True
     smtp_use_tls: bool = False  # implicit TLS, for port 465
 
+    # Chat fan-out between workers. Unset means one process, which is the
+    # right deployment at campus scale — see backend/bus.py for why that is a
+    # supported mode rather than a missing feature.
+    redis_url: str = ""
+
     log_level: str = "INFO"
     log_json: bool | None = None
     sentry_dsn: str = ""

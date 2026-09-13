@@ -12,7 +12,7 @@ making architectural changes.
 
 ## Current state
 
-Phases 00–04 are complete, phase 05 is under way. **333 tests passing**, lint clean,
+Phases 00–04 are complete, phase 05 is under way. **344 tests passing**, lint clean,
 migration round-trips, frontend builds, and the whole loop — pair, unlock,
 request, reply — has been driven end to end in a browser at phone and laptop
 width.
@@ -76,7 +76,7 @@ silently makes the whole mechanic impossible for whoever is on the short side
 — twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
-pytest                       # 333 tests, no network, no models needed
+pytest                       # 344 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
 python scripts/manage.py reviewer --email you@example.com   # open the review queue
 python scripts/check_storage.py  # why uploads are or are not working
@@ -425,6 +425,46 @@ asserting the deletes we happened to remember writing. It fails when somebody
 adds a table with a user id and forgets `OWNED_BY_USER`, which is how this
 requirement breaks in practice.
 
+### Live chat
+
+**There is one write path for a message, and it is HTTP.** The socket used to
+insert a `ChatMessage` of its own, which meant the single-message limit on an
+unanswered request, blocking and the rate limits applied to one way of sending
+and not the other — and it rebroadcast the *client's own payload*, so the
+text, id and timestamp the peer saw were whatever the sender's browser
+claimed. Now the browser POSTs, `connections.post_message` applies the rules,
+and the handler publishes what it committed. `RELAYED_TYPES` is the socket's
+allowlist and contains only `typing` and `read-receipt`; a `chat-message`
+reappearing in it would restore the hole, and a test pins that.
+
+**Publish after the commit, never before.** An event announcing a message that
+then failed to save would put text on somebody's screen that does not exist.
+
+**The socket is an accelerator, never the record.** Everything it carries is
+already in Postgres and the client refetches on open, so a dropped event costs
+latency and nothing else. That is what makes best-effort fan-out honest rather
+than a corner cut — and it means a socket that never connects degrades to
+exactly the behaviour before it existed. Never publish something that only
+exists as an event.
+
+**Redis is optional, and its absence is a supported mode.** `backend/bus.py`
+has two backends behind one interface: Redis pub/sub when `REDIS_URL` is set,
+and an in-process implementation when it is not. One worker is the correct
+deployment at campus scale, so the local bus is not a stub — it is what
+development, the tests and a single-worker production all run. Scaling out is
+an environment variable.
+
+**Each subscriber gets its own queue.** A shared one makes two sockets in a
+room competing consumers — each receiving every other message — which reads as
+a flaky connection rather than a bug and only appears with two people actually
+talking. Queues are bounded and drop rather than block, because a wedged
+socket must not stall the HTTP request that published.
+
+**Typing is re-stamped with the authenticated sender**, never relayed as
+given, or a client could type on somebody else's behalf. It expires on the
+receiving side rather than waiting for a "stopped" event, so a peer who closes
+the tab mid-word does not leave the dots up for ever.
+
 ### Identity model
 
 Three separate fields, and the separation is load-bearing:
@@ -700,18 +740,19 @@ Each of these cost real debugging time. Do not reintroduce them.
 
 Done: **block / report** (`backend/safety.py`), **rate limits**
 (`backend/ratelimit.py`), **biometric consent + account erasure**
-(`backend/privacy.py`, `backend/account.py`, `src/pages/SettingsPage.js`), and
-the **review queue with suspension** (`backend/moderation.py`,
-`src/pages/ReviewPage.js`) — all with the reasoning recorded above.
+(`backend/privacy.py`, `backend/account.py`, `src/pages/SettingsPage.js`), the
+**review queue with suspension** (`backend/moderation.py`,
+`src/pages/ReviewPage.js`), and **live chat** (`backend/bus.py`,
+`backend/signaling.py`, `src/services/live.js`) — all with the reasoning
+recorded above.
 
 Still open:
 - **Automated image moderation.** The gate still only asks "is there exactly
   one clear face"; nudity and minor detection are not wired. What exists now
   is the *human* half — a reported photo reaches a reviewer who can see it and
   remove it — so the gap is detection, not process.
-- Redis for chat fanout and presence. The chat socket exists
-  (`backend/signaling.py`) but is per-process and the frontend does not use it
-  yet — the thread view polls on open instead.
+- **Nothing notifies anybody outside the app.** No email, no push. The inbox
+  is live now, but only while it is open.
 - **Nothing tells a reporter what happened.** Deliberate for now (see the note
   in `safety.py` about why an outcome is not disclosed), but "a person reads
   every report" is a claim the reporter currently has to take on faith.
@@ -754,11 +795,14 @@ an action or introduces content; nothing here loops or decorates.
   but business logic isn't exercised against pgvector.
 - Git history contains three committed SQLite blobs (untracked since, but still
   in history). Worth a rewrite before the first push if that matters.
-- **The thread view does not live-update.** It loads on open and after you
-  send; the socket in `backend/signaling.py` is wired and access-checked but
-  the frontend does not connect to it yet. Waits for Redis in phase 05.
-- **No notification of any kind** when a request arrives. The inbox has to be
-  opened. Mail sender first, then this.
+- **The socket has no end-to-end test.** `signaling._is_participant` opens
+  `AsyncSessionLocal` directly rather than the injected session, so it reads a
+  different database from the one each test builds. `tests/test_live.py`
+  covers the bus and the publish contract instead; the access check itself is
+  only exercised by hand. Fix when the socket next changes shape.
+- **No notification of any kind** when a request arrives, unless the inbox is
+  already open — the socket only carries a conversation somebody is looking
+  at. Mail sender first, then this.
 - **`/inbox` holds the thread in page state, not the URL**, so a conversation
   cannot be linked to or restored by reload. The router matches exact paths and
   has no params; add them when a second surface needs them. Profiles and
@@ -798,7 +842,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 333 and rising; every bug found gets a regression
+- **Tests are the contract.** 344 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.
@@ -814,6 +858,7 @@ an action or introduces content; nothing here loops or decorates.
   |---|---|---|
   | `pairing.py` | `pairs.py` | generation, serve/decide, round scheduling |
   | `connections.py` | `inbox.py` | requests, replies, declines, the inbox |
+  | `bus.py` | `signaling.py` | fan-out between processes; the chat socket |
   | `rating.py` (pure) | — | Glicko-2 and the Wilson interval, no database |
   | `rating_service.py` | — | the only thing touching both maths and SQL |
   | `affinity.py` | — | the unlock: counts, classification, permanence |

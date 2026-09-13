@@ -2,6 +2,7 @@ import { createElement, formatTime } from '../utils/dom.js';
 import { profileBody } from '../components/profile.js';
 import { openSheet } from '../components/sheet.js';
 import { reportPhoto, safetyButton } from '../components/safety.js';
+import { joinThread } from '../services/live.js';
 import api from '../services/api.js';
 import router from '../services/router.js';
 import { toast } from '../utils/toast.js';
@@ -106,8 +107,12 @@ export default {
       }
       if (entry.unread > 0) api.markRead(entry.id).catch(() => {});
 
+      // Held across the sheet's lifetime so the teardown below can close it.
+      let live = null;
+
       openSheet({
         label: `Conversation with ${thread.peer.display_name || 'someone'}`,
+        onClose: () => live?.close(),
         build: ({ close }) => {
           const wrap = createElement('div', { className: 'thread' });
 
@@ -155,6 +160,7 @@ export default {
                 thread.status === 'requested' ? 'Reply, and the chat opens' : 'Write a message',
               autocomplete: 'off',
             });
+            input.addEventListener('input', () => live?.typing());
             const send = createElement('button', {
               className: 'btn thread__send',
               type: 'submit',
@@ -180,7 +186,7 @@ export default {
                 { text, mine: true, sent_at: new Date().toISOString() },
                 { fresh: true }
               );
-              log.append(optimistic);
+              log.insertBefore(optimistic, log.querySelector('.thread__typing'));
               log.scrollTop = log.scrollHeight;
 
               try {
@@ -201,6 +207,52 @@ export default {
 
             foot.append(form);
           }
+
+          // Typing dots live at the end of the log so they read as the next
+          // message about to arrive, which is what they mean.
+          const typing = createElement('div', { className: 'thread__typing', hidden: 'hidden' });
+          typing.append(
+            createElement('span', { className: 'thread__dot' }),
+            createElement('span', { className: 'thread__dot' }),
+            createElement('span', { className: 'thread__dot' })
+          );
+          log.append(typing);
+
+          /* Live updates. Everything below is an accelerator: the same state
+             arrives from `getThread` on the next open, so a socket that never
+             connects costs immediacy and nothing else. */
+          const atBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+
+          live = joinThread(entry.id, {
+            onMessage: (message) => {
+              // Only follow the conversation down if they were already at the
+              // bottom — yanking the view while somebody is reading back
+              // through a thread is worse than a missed message.
+              const follow = atBottom();
+              const previous = typing.previousElementSibling;
+              if (previous?.classList.contains('bubble-row--theirs')) {
+                previous.querySelector('.bubble__time')?.remove();
+              }
+              log.insertBefore(bubbleFor(message, { fresh: true }), typing);
+              typing.hidden = true;
+              if (follow) log.scrollTop = log.scrollHeight;
+
+              // They wrote, so this is now read by us, and the list badge
+              // behind the sheet is stale either way.
+              api.markRead(entry.id).catch(() => {});
+              refresh();
+            },
+            onRead: () => {
+              for (const node of log.querySelectorAll('.bubble-row--mine')) {
+                node.classList.add('is-read');
+              }
+            },
+            onTyping: (on) => {
+              const follow = atBottom();
+              typing.hidden = !on;
+              if (on && follow) log.scrollTop = log.scrollHeight;
+            },
+          });
 
           wrap.append(bar, log, foot);
           requestAnimationFrame(() => {

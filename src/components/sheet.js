@@ -27,8 +27,9 @@ function unlockScroll() {
  * @param {object} options
  * @param {(api: {close: () => void}) => Node|Node[]} options.build  contents, given a way to dismiss itself
  * @param {string} [options.label]  accessible name for the dialog
+ * @param {() => void} [options.onClose]  teardown — a socket, a timer — run as it starts closing
  */
-export function openSheet({ build, label }) {
+export function openSheet({ build, label, onClose }) {
   // Restored on close: dismissing a sheet should put the keyboard back where
   // it was, not at the top of the document.
   const previouslyFocused = document.activeElement;
@@ -58,6 +59,10 @@ export function openSheet({ build, label }) {
     closing = true;
     root.classList.remove('is-open');
     document.removeEventListener('keydown', onKey);
+    // Called at the decision to close rather than when the animation ends:
+    // a caller tearing down a live connection should not have it linger for
+    // the length of a transition.
+    onClose?.();
 
     // The panel's own transition decides when it is gone. Reduced motion
     // shortens that to ~0ms globally, so the fallback is only for a browser

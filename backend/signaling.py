@@ -1,16 +1,37 @@
-"""Chat WebSocket.
+"""The chat socket.
 
-Calls are gone, so this carries only chat, typing and read receipts. The
-connection registry is still per-process — that is the known single-worker
-limit, replaced by Redis pub/sub in phase 03 (see DEPLOYMENT.md).
+It carries three things — new messages, typing, and read receipts — and it
+**writes none of them**. That is the design decision worth understanding
+before changing anything here.
 
-Security note: the previous version authenticated the token but never checked
-that the connecting user belonged to the room, so anyone holding a match id
-could read and write another pair's conversation. `_is_participant` closes that.
+**There is one write path, and it is HTTP.** `connections.post_message` is
+where the rules live: who may write to whom, the single-message limit on an
+unanswered request, blocking, and the rate limit behind all of it. The socket
+used to have a second path that inserted a `ChatMessage` directly, which meant
+those rules applied to one way of sending a message and not the other — and
+worse, it rebroadcast the *client's own payload*, so the text, the id and the
+timestamp the peer saw were whatever the sender's browser claimed rather than
+what was stored. Now the browser POSTs, the handler publishes what it
+committed, and the socket delivers it.
+
+**The socket is an accelerator, never the record.** Everything it carries is
+already in Postgres and the client refetches the thread on open, so a dropped
+event costs latency and nothing else. That is what makes best-effort fan-out
+(see `backend/bus.py`) an honest choice rather than a corner cut.
+
+Typing and read receipts are the exception to "already in Postgres": they are
+ephemeral by nature, so they are relayed through the bus and never stored. A
+lost one means a dot that did not appear.
+
+Security: the token is verified, the origin is checked, and `_is_participant`
+confirms membership of an **open** conversation. That last one is not
+cosmetic — an earlier version authenticated the token and nothing else, so
+anyone holding a room id could read another pair's conversation.
 """
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 from typing import Any
@@ -18,48 +39,22 @@ from typing import Any
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import or_, select
 
+from backend import bus
 from backend.auth import verify_ws_token
 from backend.config import settings
-from backend.database import AsyncSessionLocal, ChatMessage, Connection, ConnectionStatus
+from backend.database import AsyncSessionLocal, Connection, ConnectionStatus
 from backend.logging_config import get_logger
 from backend.safety import is_blocked
 
 log = get_logger(__name__)
 router = APIRouter()
 
+# Ephemeral, never stored, and the only things a client may originate.
 RELAYED_TYPES = {"typing", "read-receipt"}
 
 # Close codes
 POLICY_VIOLATION = 1008
 INTERNAL_ERROR = 1011
-
-
-class ConnectionManager:
-    def __init__(self) -> None:
-        self.rooms: dict[str, dict[str, WebSocket]] = {}
-
-    async def connect(self, ws: WebSocket, room_id: str, user_id: str) -> None:
-        self.rooms.setdefault(room_id, {})[user_id] = ws
-
-    def disconnect(self, room_id: str, user_id: str) -> None:
-        room = self.rooms.get(room_id)
-        if not room:
-            return
-        room.pop(user_id, None)
-        if not room:
-            self.rooms.pop(room_id, None)
-
-    async def broadcast(self, room_id: str, message: dict[str, Any], exclude: str | None = None) -> None:
-        for user_id, ws in list(self.rooms.get(room_id, {}).items()):
-            if user_id == exclude:
-                continue
-            try:
-                await ws.send_json(message)
-            except (RuntimeError, WebSocketDisconnect):
-                self.disconnect(room_id, user_id)
-
-
-manager = ConnectionManager()
 
 
 async def _is_participant(connection_id: str, user_id: str) -> bool:
@@ -92,6 +87,44 @@ async def _is_participant(connection_id: str, user_id: str) -> bool:
         return not await is_blocked(db, user_id, other)
 
 
+async def message_sent(connection_id: str, message: dict[str, Any], sender_id: str) -> None:
+    """Announce a message the HTTP handler has already committed.
+
+    `mine` is deliberately dropped: the serialised message carries it from the
+    sender's point of view, and every recipient of this event is the other
+    person. Leaving it in would show them their own reply as theirs.
+    """
+    await bus.publish(
+        connection_id,
+        {
+            "type": "chat-message",
+            "from": sender_id,
+            "message": {key: value for key, value in message.items() if key != "mine"},
+        },
+    )
+
+
+async def read_up_to(connection_id: str, reader_id: str) -> None:
+    """Tell the other side their messages have been read.
+
+    Sent from the HTTP handler that actually changed the rows, so the ticks a
+    sender sees match what the database says rather than what a client claimed
+    over the socket.
+    """
+    await bus.publish(connection_id, {"type": "read-receipt", "from": reader_id})
+
+
+async def _deliver(websocket: WebSocket, queue: asyncio.Queue, user_id: str) -> None:
+    """Pump bus events out to this socket until it goes away."""
+    while True:
+        event = await queue.get()
+        # Everyone in the room hears everything; the sender filters its own
+        # echo here rather than the publisher tracking who is where.
+        if event.get("from") == user_id:
+            continue
+        await websocket.send_json(event)
+
+
 @router.websocket("/ws/signal/{room_id}")
 async def chat_socket(websocket: WebSocket, room_id: str, token: str = Query(...)) -> None:
     user_id = verify_ws_token(token)
@@ -111,49 +144,43 @@ async def chat_socket(websocket: WebSocket, room_id: str, token: str = Query(...
         return
 
     await websocket.accept()
-    await manager.connect(websocket, room_id, user_id)
-    await manager.broadcast(room_id, {"type": "peer-joined", "user_id": user_id}, exclude=user_id)
     log.info("ws_connected", room_id=room_id, user_id=user_id)
 
-    try:
-        while True:
-            raw = await websocket.receive_text()
-            try:
-                message = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(message, dict):
-                continue
-
-            message_type = message.get("type")
-
-            if message_type == "ping":
-                await websocket.send_json({"type": "pong"})
-
-            elif message_type == "chat-message":
-                body = (message.get("message") or {}).get("text")
-                if not isinstance(body, str) or not body.strip():
+    async with bus.subscribe(room_id) as queue:
+        await bus.publish(room_id, {"type": "peer-joined", "from": user_id})
+        sender = asyncio.create_task(_deliver(websocket, queue, user_id))
+        try:
+            while True:
+                raw = await websocket.receive_text()
+                try:
+                    message = json.loads(raw)
+                except json.JSONDecodeError:
                     continue
-                async with AsyncSessionLocal() as db:
-                    db.add(
-                        ChatMessage(
-                            connection_id=room_id,
-                            from_user_id=user_id,
-                            message_text=body.strip()[:4000],
-                        )
-                    )
-                    await db.commit()
-                await manager.broadcast(room_id, message, exclude=user_id)
+                if not isinstance(message, dict):
+                    continue
 
-            elif message_type in RELAYED_TYPES:
-                await manager.broadcast(room_id, message, exclude=user_id)
+                message_type = message.get("type")
 
-    except WebSocketDisconnect:
-        pass
-    except Exception:
-        log.exception("ws_error", room_id=room_id, user_id=user_id)
-        with contextlib.suppress(RuntimeError):
-            await websocket.close(code=INTERNAL_ERROR)
-    finally:
-        manager.disconnect(room_id, user_id)
-        await manager.broadcast(room_id, {"type": "peer-left", "user_id": user_id}, exclude=user_id)
+                if message_type == "ping":
+                    await websocket.send_json({"type": "pong"})
+
+                elif message_type in RELAYED_TYPES:
+                    # Re-stamped with the authenticated sender rather than
+                    # relayed as given: a client that names somebody else must
+                    # not be able to type on their behalf.
+                    await bus.publish(room_id, {"type": message_type, "from": user_id})
+
+                # Anything else — a `chat-message` from an old client, say —
+                # is ignored on purpose. Messages are sent over HTTP.
+
+        except WebSocketDisconnect:
+            pass
+        except Exception:
+            log.exception("ws_error", room_id=room_id, user_id=user_id)
+            with contextlib.suppress(RuntimeError):
+                await websocket.close(code=INTERNAL_ERROR)
+        finally:
+            sender.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await sender
+            await bus.publish(room_id, {"type": "peer-left", "from": user_id})
