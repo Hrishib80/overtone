@@ -81,10 +81,20 @@ export default {
 
     const stage = createElement('main', { className: 'pairs__stage' });
 
+    /* The only way out of this screen, so it has to say what is behind it.
+       It used to read "my type" with an unlabelled dot, which told somebody
+       there was *something* without telling them it was worth the tap — and
+       the section that matters most, the people who keep choosing you, was
+       invisible from here entirely.
+
+       Deliberately still small and factual. This is the comparison screen;
+       "3 people love you!" over a pair of photographs would be putting a
+       thumb on the very scale the whole mechanic exists to keep level. */
     const foot = createElement('footer', { className: 'pairs__foot' });
-    const inboxLink = createElement('button', { className: 'pairs__inbox', type: 'button' }, 'my type');
-    const inboxDot = createElement('span', { className: 'pairs__badge', hidden: 'hidden' });
-    inboxLink.append(inboxDot);
+    const inboxLink = createElement('button', { className: 'pairs__inbox', type: 'button' });
+    const inboxLabel = createElement('span', { className: 'pairs__inbox-label' }, 'my type');
+    const inboxNews = createElement('span', { className: 'pairs__inbox-news' });
+    inboxLink.append(inboxLabel, inboxNews);
     inboxLink.addEventListener('click', () => router.go('/inbox'));
     foot.append(inboxLink);
 
@@ -106,14 +116,30 @@ export default {
       sub.classList.add('is-new');
     }
 
-    /** Once on mount: is there anything worth going to the inbox for? */
+    /** Once on mount: is there anything worth going to the inbox for, and
+        what is it? Named rather than counted, because "2" over a link tells
+        you there is something and not whether to care. */
     async function checkInbox() {
       try {
         const inbox = await api.getInbox();
-        const waiting = inbox.requests.length + inbox.unlocked.length + inbox.admirers.length;
-        inboxDot.hidden = waiting === 0;
+        const bits = [];
+        if (inbox.requests.length) {
+          bits.push(`${inbox.requests.length} waiting on you`);
+        }
+        if (inbox.admirers.length) {
+          bits.push(`${inbox.admirers.length} keep choosing you`);
+        }
+        if (!bits.length && inbox.unlocked.length) {
+          bits.push(`${inbox.unlocked.length} open to you`);
+        }
+        inboxNews.textContent = bits.length ? ` · ${bits.join(' · ')}` : '';
+        inboxLink.setAttribute(
+          'aria-label',
+          bits.length ? `My type: ${bits.join(', ')}` : 'My type'
+        );
       } catch {
-        inboxDot.hidden = true; // never let a badge be the reason a page errors
+        // Never let the footer be the reason a page errors.
+        inboxNews.textContent = '';
       }
     }
 
@@ -180,7 +206,7 @@ export default {
       actions.append(write, later);
       card.append(actions);
 
-      inboxDot.hidden = false;
+      checkInbox();
       setStage(card);
       window.scrollTo({ top: 0 });
     }

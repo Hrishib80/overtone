@@ -122,8 +122,22 @@
   font-size: var(--t--1);
   font-weight: 650;
   cursor: pointer;
+  /* Only the label is underlined, so the news beside it reads as a fact
+     rather than as part of the link. */
+  text-decoration: none;
+  max-width: min(92vw, 560px);
+  text-wrap: balance;
+}
+
+.pairs__inbox-label {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* Lighter than the link it follows: it is what is there, not the way in. */
+.pairs__inbox-news {
+  font-weight: 400;
+  opacity: 0.85;
 }
 
 /* A mark, never a count — the same rule the inbox rows follow. */
