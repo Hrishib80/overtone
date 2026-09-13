@@ -6,7 +6,6 @@ import LandingPage from './pages/LandingPage.js';
 import { JoinPage, SignInPage } from './pages/AuthPage.js';
 import VerifyPage from './pages/VerifyPage.js';
 import OnboardingPage from './pages/OnboardingPage.js';
-import StatusPage from './pages/StatusPage.js';
 import PairPage from './pages/PairPage.js';
 import InboxPage from './pages/InboxPage.js';
 
@@ -17,7 +16,6 @@ async function boot() {
     '/signin': SignInPage,
     '/verify': VerifyPage,
     '/onboarding': OnboardingPage,
-    '/status': StatusPage,
     '/pairs': PairPage,
     '/inbox': InboxPage,
   });

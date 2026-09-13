@@ -170,16 +170,21 @@ def blended_similarity(a: Candidate, b: Candidate) -> float:
 async def _eligible_candidates(
     db: AsyncSession, viewer: User, segment: str, viewer_visible_as: list[str]
 ) -> list[Candidate]:
-    """Everyone this viewer could be shown under `segment`: same campus,
-    active, visible_as this segment, mutually interested in the viewer, not
-    blocked in either direction, and with a face embedding to compare."""
+    """Everyone this viewer could be shown under `segment`: active,
+    visible_as this segment, mutually interested in the viewer, not blocked in
+    either direction, and with a face embedding to compare.
+
+    There is no population boundary — one pool, everybody in it. This query is
+    where a boundary would go back if the app ever wants per-college or
+    per-city pools: one more `.where(...)` against whatever column decides
+    which pool somebody is in.
+    """
     excluded = await blocked_ids(db, viewer.id)
     rows = (
         await db.execute(
             select(User, ProfileEmbedding)
             .join(UserVisibleAs, UserVisibleAs.user_id == User.id)
             .join(ProfileEmbedding, ProfileEmbedding.user_id == User.id)
-            .where(User.scope_id == viewer.scope_id)
             .where(User.status == UserStatus.active)
             .where(User.deleted_at.is_(None))
             .where(User.id != viewer.id)

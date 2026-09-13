@@ -24,7 +24,7 @@ from backend.ratelimit import (
     consume,
     sweep,
 )
-from tests.conftest import CAMPUS_DOMAIN
+from tests.conftest import TEST_DOMAIN
 
 TINY = Limit("test_action", 3, timedelta(minutes=10))
 
@@ -179,7 +179,7 @@ def test_address_keyed_limits_are_loose_enough_for_a_campus():
 async def test_repeated_failed_logins_on_one_account_are_cut_off(client, registered):
     """The limit that actually defends a password, keyed where the attack is
     aimed rather than where it comes from."""
-    email = registered["headers"] and f"aditi@{CAMPUS_DOMAIN}"
+    email = registered["headers"] and f"aditi@{TEST_DOMAIN}"
 
     last = None
     for _ in range(LOGIN_PER_ACCOUNT.allowance + 2):
@@ -203,18 +203,18 @@ async def test_the_send_request_limit_is_enforced_before_any_work_happens(
     from tests.conftest import onboard
 
     await onboard(
-        client, f"ada@{CAMPUS_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
+        client, f"ada@{TEST_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
     )
     ben = await onboard(
-        client, f"ben@{CAMPUS_DOMAIN}", visible_as=["man"], interested_in=["woman"], store=fake_storage
+        client, f"ben@{TEST_DOMAIN}", visible_as=["man"], interested_in=["woman"], store=fake_storage
     )
 
     async def user_id(email):
         async with db_sessionmaker() as db:
             return (await db.execute(select(User).where(User.email == email))).scalar_one().id
 
-    ada_id = await user_id(f"ada@{CAMPUS_DOMAIN}")
-    ben_id = await user_id(f"ben@{CAMPUS_DOMAIN}")
+    ada_id = await user_id(f"ada@{TEST_DOMAIN}")
+    ben_id = await user_id(f"ben@{TEST_DOMAIN}")
 
     async with db_sessionmaker() as db:
         for _ in range(SEND_REQUEST.allowance):

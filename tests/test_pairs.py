@@ -15,7 +15,7 @@ from sqlalchemy import select
 
 from backend.affinity import apply_decision, is_unlocked
 from backend.database import MediaAsset, MediaStatus, Pairing, PairRound, User, pair_key, utcnow
-from tests.conftest import CAMPUS_DOMAIN, onboard, run_jobs
+from tests.conftest import TEST_DOMAIN, onboard, run_jobs
 
 
 async def _two_mutual_users(client, db_sessionmaker, fake_storage, *, prefix="p"):
@@ -23,21 +23,21 @@ async def _two_mutual_users(client, db_sessionmaker, fake_storage, *, prefix="p"
     enough for generate_one_pair to actually find a match."""
     a = await onboard(
         client,
-        f"{prefix}a@{CAMPUS_DOMAIN}",
+        f"{prefix}a@{TEST_DOMAIN}",
         visible_as=["woman"],
         interested_in=["man"],
         store=fake_storage,
     )
     b = await onboard(
         client,
-        f"{prefix}b@{CAMPUS_DOMAIN}",
+        f"{prefix}b@{TEST_DOMAIN}",
         visible_as=["woman"],
         interested_in=["man"],
         store=fake_storage,
     )
     viewer = await onboard(
         client,
-        f"{prefix}v@{CAMPUS_DOMAIN}",
+        f"{prefix}v@{TEST_DOMAIN}",
         visible_as=["man"],
         interested_in=["woman"],
         store=fake_storage,
@@ -145,7 +145,7 @@ async def test_decide_rejects_someone_elses_pairing(client, db_sessionmaker, fak
 
     intruder = await onboard(
         client,
-        f"intruder@{CAMPUS_DOMAIN}",
+        f"intruder@{TEST_DOMAIN}",
         visible_as=["man"],
         interested_in=["woman"],
         store=fake_storage,
@@ -330,7 +330,7 @@ async def test_an_ordinary_decision_unlocks_nothing(client, db_sessionmaker, fak
 @pytest.mark.asyncio
 async def test_the_deciding_choice_returns_the_full_profile(client, db_sessionmaker, fake_storage):
     _a, _b, viewer = await _two_mutual_users(client, db_sessionmaker, fake_storage)
-    viewer_id = await _user_id(db_sessionmaker, f"pv@{CAMPUS_DOMAIN}")
+    viewer_id = await _user_id(db_sessionmaker, f"pv@{TEST_DOMAIN}")
 
     pair = (await client.get("/api/pairs/next", headers=viewer["headers"])).json()["pair"]
     chosen, rejected = (s["id"] for s in pair["subjects"])
@@ -359,7 +359,7 @@ async def test_an_unlock_never_carries_a_rating_or_an_address(client, db_session
     """The line the whole design rests on: a viewer learns that someone opened
     up, never how anyone is scored, and never anything private."""
     _a, _b, viewer = await _two_mutual_users(client, db_sessionmaker, fake_storage)
-    viewer_id = await _user_id(db_sessionmaker, f"pv@{CAMPUS_DOMAIN}")
+    viewer_id = await _user_id(db_sessionmaker, f"pv@{TEST_DOMAIN}")
 
     pair = (await client.get("/api/pairs/next", headers=viewer["headers"])).json()["pair"]
     chosen, rejected = (s["id"] for s in pair["subjects"])
@@ -381,7 +381,7 @@ async def test_an_unlock_never_carries_a_rating_or_an_address(client, db_session
 @pytest.mark.asyncio
 async def test_the_person_passed_over_is_not_unlocked(client, db_sessionmaker, fake_storage):
     _a, _b, viewer = await _two_mutual_users(client, db_sessionmaker, fake_storage)
-    viewer_id = await _user_id(db_sessionmaker, f"pv@{CAMPUS_DOMAIN}")
+    viewer_id = await _user_id(db_sessionmaker, f"pv@{TEST_DOMAIN}")
 
     pair = (await client.get("/api/pairs/next", headers=viewer["headers"])).json()["pair"]
     chosen, rejected = (s["id"] for s in pair["subjects"])

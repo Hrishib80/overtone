@@ -5,7 +5,6 @@ import store from './store.js';
 const HOME_FOR_STATUS = {
   pending_verification: '/verify',
   onboarding: '/onboarding',
-  waitlisted: '/status',
   active: '/pairs',
 };
 

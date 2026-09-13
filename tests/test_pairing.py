@@ -4,7 +4,7 @@ Split deliberately: the pure selection logic (`_pick_partner`, similarity,
 weighting) is tested in memory against hand-built candidates, with no
 database — that is where the interesting arithmetic lives, and it should be
 checked precisely. The database-backed tests below exercise the wiring around
-it: mutual visibility, scope isolation, the seen-pair constraint, and the
+it: mutual visibility, the seen-pair constraint, and the
 serve/decide/reschedule state machine — the properties that would silently
 leak one campus's users into another's, or let the same pair repeat, if they
 regressed.
@@ -24,8 +24,6 @@ from backend.database import (
     PairStatus,
     ProfileEmbedding,
     RatingKind,
-    Scope,
-    ScopeStatus,
     User,
     UserInterestedIn,
     UserStatus,
@@ -217,7 +215,6 @@ def test_pair_key_is_order_independent():
 async def _seed_user(
     db_sessionmaker,
     *,
-    scope_id: str,
     email: str,
     visible_as: list[str],
     interested_in: list[str],
@@ -236,9 +233,7 @@ async def _seed_user(
             password_hash="x",
             display_name=email.split("@")[0],
             birthdate=date(2003, 1, 1),
-            scope_id=scope_id,
             status=status,
-            cap_segment=visible_as[0] if visible_as else None,
             email_verified_at=utcnow(),
             deleted_at=utcnow() if deleted else None,
         )
@@ -263,11 +258,10 @@ def rng():
 
 
 @pytest.mark.asyncio
-async def test_generate_one_pair_is_none_without_interested_in(db_sessionmaker, scope, rng):
+async def test_generate_one_pair_is_none_without_interested_in(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["woman"],
         interested_in=[],
         face=[1.0, 0.0],
@@ -278,19 +272,17 @@ async def test_generate_one_pair_is_none_without_interested_in(db_sessionmaker, 
 
 
 @pytest.mark.asyncio
-async def test_generate_one_pair_is_none_with_fewer_than_two_candidates(db_sessionmaker, scope, rng):
+async def test_generate_one_pair_is_none_with_fewer_than_two_candidates(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="one@campus.edu",
+        email="one@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
@@ -301,11 +293,10 @@ async def test_generate_one_pair_is_none_with_fewer_than_two_candidates(db_sessi
 
 
 @pytest.mark.asyncio
-async def test_generate_one_pair_never_includes_the_viewer(db_sessionmaker, scope, rng):
+async def test_generate_one_pair_never_includes_the_viewer(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["woman", "man"],
         interested_in=["man"],
         face=[1.0, 0.0],
@@ -313,8 +304,7 @@ async def test_generate_one_pair_never_includes_the_viewer(db_sessionmaker, scop
     for i in range(3):
         await _seed_user(
             db_sessionmaker,
-            scope_id=scope.id,
-            email=f"c{i}@campus.edu",
+            email=f"c{i}@example.com",
             visible_as=["man"],
             interested_in=["woman"],
             face=[0.9 - i * 0.05, 0.1],
@@ -329,55 +319,50 @@ async def test_generate_one_pair_never_includes_the_viewer(db_sessionmaker, scop
 
 
 @pytest.mark.asyncio
-async def test_a_different_campus_is_never_a_candidate(db_sessionmaker, scope, rng):
-    async with db_sessionmaker() as db:
-        other = Scope(
-            slug="other", name="Other Campus", email_domains=["other.edu"], status=ScopeStatus.building
-        )
-        db.add(other)
-        await db.commit()
-        other_id = other.id
-
+async def test_everybody_is_in_one_pool(db_sessionmaker, seeded, rng):
+    """This used to assert the opposite — that a lookalike on another campus
+    was never a candidate. There are no campuses now, so the same two people
+    are expected to pair, and this is the test that would fail first if a
+    population boundary were reintroduced without anyone meaning to.
+    """
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
-    # A near-perfect visual and mutual-visibility match, on the wrong campus.
-    await _seed_user(
-        db_sessionmaker,
-        scope_id=other_id,
-        email="lookalike@other.edu",
-        visible_as=["woman"],
-        interested_in=["man"],
-        face=[1.0, 0.0],
-    )
+    for address in ("lookalike@gmail.com", "another@some-college.ac.in"):
+        await _seed_user(
+            db_sessionmaker,
+            email=address,
+            visible_as=["woman"],
+            interested_in=["man"],
+            face=[1.0, 0.0],
+        )
 
     async with db_sessionmaker() as db:
         viewer = await db.get(User, viewer_id)
-        assert await generate_one_pair(db, viewer, rng=rng) is None
+        pairing = await generate_one_pair(db, viewer, rng=rng)
+
+    assert pairing is not None
 
 
 @pytest.mark.asyncio
-async def test_visibility_must_be_mutual_not_one_sided(db_sessionmaker, scope, rng):
+async def test_visibility_must_be_mutual_not_one_sided(db_sessionmaker, seeded, rng):
     """A candidate who is visible_as the target segment but not interested_in
     the viewer's segment must never appear, even though the one-directional
     join would otherwise find them."""
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="uninterested@campus.edu",
+        email="uninterested@example.com",
         visible_as=["woman"],
         interested_in=["nonbinary"],  # not interested in "man" — the viewer's segment
         face=[0.99, 0.1],
@@ -389,35 +374,31 @@ async def test_visibility_must_be_mutual_not_one_sided(db_sessionmaker, scope, r
 
 
 @pytest.mark.asyncio
-async def test_a_candidate_without_a_face_embedding_is_excluded(db_sessionmaker, scope, rng):
+async def test_a_candidate_without_a_face_embedding_is_excluded(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="nophoto@campus.edu",
+        email="nophoto@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=None,
     )
     await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="hasphoto@campus.edu",
+        email="hasphoto@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="alsohasphoto@campus.edu",
+        email="alsohasphoto@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -432,19 +413,17 @@ async def test_a_candidate_without_a_face_embedding_is_excluded(db_sessionmaker,
 
 
 @pytest.mark.asyncio
-async def test_a_deleted_user_is_excluded(db_sessionmaker, scope, rng):
+async def test_a_deleted_user_is_excluded(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="gone@campus.edu",
+        email="gone@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.95, 0.1],
@@ -452,16 +431,14 @@ async def test_a_deleted_user_is_excluded(db_sessionmaker, scope, rng):
     )
     await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="here@campus.edu",
+        email="here@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
     )
     await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="alsohere@campus.edu",
+        email="alsohere@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.4, 0.6],
@@ -476,11 +453,10 @@ async def test_a_deleted_user_is_excluded(db_sessionmaker, scope, rng):
 
 
 @pytest.mark.asyncio
-async def test_the_same_pair_is_never_generated_twice_for_one_viewer(db_sessionmaker, scope, rng):
+async def test_the_same_pair_is_never_generated_twice_for_one_viewer(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
@@ -488,8 +464,7 @@ async def test_the_same_pair_is_never_generated_twice_for_one_viewer(db_sessionm
     for i in range(5):
         await _seed_user(
             db_sessionmaker,
-            scope_id=scope.id,
-            email=f"c{i}@campus.edu",
+            email=f"c{i}@example.com",
             visible_as=["woman"],
             interested_in=["man"],
             face=[0.9 - i * 0.1, 0.1 + i * 0.05],
@@ -508,11 +483,10 @@ async def test_the_same_pair_is_never_generated_twice_for_one_viewer(db_sessionm
 
 
 @pytest.mark.asyncio
-async def test_next_pair_generates_when_nothing_is_queued(db_sessionmaker, scope, rng):
+async def test_next_pair_generates_when_nothing_is_queued(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
@@ -520,8 +494,7 @@ async def test_next_pair_generates_when_nothing_is_queued(db_sessionmaker, scope
     for i in range(3):
         await _seed_user(
             db_sessionmaker,
-            scope_id=scope.id,
-            email=f"c{i}@campus.edu",
+            email=f"c{i}@example.com",
             visible_as=["woman"],
             interested_in=["man"],
             face=[0.9 - i * 0.1, 0.1],
@@ -538,11 +511,10 @@ async def test_next_pair_generates_when_nothing_is_queued(db_sessionmaker, scope
 
 
 @pytest.mark.asyncio
-async def test_next_pair_is_none_when_nobody_is_eligible(db_sessionmaker, scope, rng):
+async def test_next_pair_is_none_when_nobody_is_eligible(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
@@ -554,15 +526,14 @@ async def test_next_pair_is_none_when_nobody_is_eligible(db_sessionmaker, scope,
 
 @pytest.mark.asyncio
 async def test_next_pair_resumes_an_undecided_pairing_instead_of_generating_a_new_one(
-    db_sessionmaker, scope, rng
+    db_sessionmaker, seeded, rng
 ):
     """Regression test: calling next_pair twice before a decision (a page
     reload, for instance) must not orphan the first pairing and hand out a
     second — the two calls have to be idempotent."""
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
@@ -570,8 +541,7 @@ async def test_next_pair_resumes_an_undecided_pairing_instead_of_generating_a_ne
     for i in range(3):
         await _seed_user(
             db_sessionmaker,
-            scope_id=scope.id,
-            email=f"c{i}@campus.edu",
+            email=f"c{i}@example.com",
             visible_as=["woman"],
             interested_in=["man"],
             face=[0.9 - i * 0.1, 0.1],
@@ -605,27 +575,24 @@ async def test_next_pair_resumes_an_undecided_pairing_instead_of_generating_a_ne
 
 
 @pytest.mark.asyncio
-async def test_next_pair_promotes_a_due_round_two_over_generating_a_new_pair(db_sessionmaker, scope, rng):
+async def test_next_pair_promotes_a_due_round_two_over_generating_a_new_pair(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="a@campus.edu",
+        email="a@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="b@campus.edu",
+        email="b@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -655,27 +622,24 @@ async def test_next_pair_promotes_a_due_round_two_over_generating_a_new_pair(db_
 
 
 @pytest.mark.asyncio
-async def test_next_pair_does_not_promote_a_round_two_before_it_is_due(db_sessionmaker, scope, rng):
+async def test_next_pair_does_not_promote_a_round_two_before_it_is_due(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="a@campus.edu",
+        email="a@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="b@campus.edu",
+        email="b@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -705,27 +669,24 @@ async def test_next_pair_does_not_promote_a_round_two_before_it_is_due(db_sessio
 
 
 @pytest.mark.asyncio
-async def test_record_decision_moves_ratings_the_way_apply_comparison_would(db_sessionmaker, scope, rng):
+async def test_record_decision_moves_ratings_the_way_apply_comparison_would(db_sessionmaker, seeded, rng):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="a@campus.edu",
+        email="a@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="b@campus.edu",
+        email="b@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -772,27 +733,24 @@ async def test_record_decision_moves_ratings_the_way_apply_comparison_would(db_s
 
 
 @pytest.mark.asyncio
-async def test_a_round_one_decision_schedules_a_round_two(db_sessionmaker, scope):
+async def test_a_round_one_decision_schedules_a_round_two(db_sessionmaker, seeded):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="a@campus.edu",
+        email="a@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="b@campus.edu",
+        email="b@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -836,27 +794,24 @@ async def test_a_round_one_decision_schedules_a_round_two(db_sessionmaker, scope
 
 
 @pytest.mark.asyncio
-async def test_a_round_two_decision_does_not_schedule_another_round_two(db_sessionmaker, scope):
+async def test_a_round_two_decision_does_not_schedule_another_round_two(db_sessionmaker, seeded):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="a@campus.edu",
+        email="a@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="b@campus.edu",
+        email="b@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -888,35 +843,31 @@ async def test_a_round_two_decision_does_not_schedule_another_round_two(db_sessi
 
 
 @pytest.mark.asyncio
-async def test_record_decision_rejects_the_wrong_viewer(db_sessionmaker, scope):
+async def test_record_decision_rejects_the_wrong_viewer(db_sessionmaker, seeded):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     intruder_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="intruder@campus.edu",
+        email="intruder@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[0.5, 0.5],
     )
     a = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="a@campus.edu",
+        email="a@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="b@campus.edu",
+        email="b@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -942,11 +893,10 @@ async def test_record_decision_rejects_the_wrong_viewer(db_sessionmaker, scope):
 
 
 @pytest.mark.asyncio
-async def test_record_decision_rejects_an_unknown_pairing(db_sessionmaker, scope):
+async def test_record_decision_rejects_an_unknown_pairing(db_sessionmaker, seeded):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
@@ -958,27 +908,24 @@ async def test_record_decision_rejects_an_unknown_pairing(db_sessionmaker, scope
 
 
 @pytest.mark.asyncio
-async def test_record_decision_rejects_an_already_decided_pairing(db_sessionmaker, scope):
+async def test_record_decision_rejects_an_already_decided_pairing(db_sessionmaker, seeded):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="a@campus.edu",
+        email="a@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="b@campus.edu",
+        email="b@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -1005,27 +952,24 @@ async def test_record_decision_rejects_an_already_decided_pairing(db_sessionmake
 
 
 @pytest.mark.asyncio
-async def test_record_decision_rejects_a_choice_outside_the_pair(db_sessionmaker, scope):
+async def test_record_decision_rejects_a_choice_outside_the_pair(db_sessionmaker, seeded):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="a@campus.edu",
+        email="a@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="b@campus.edu",
+        email="b@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
@@ -1051,35 +995,31 @@ async def test_record_decision_rejects_a_choice_outside_the_pair(db_sessionmaker
 
 
 @pytest.mark.asyncio
-async def test_expire_stale_round_two_only_touches_pending_rows_past_the_window(db_sessionmaker, scope):
+async def test_expire_stale_round_two_only_touches_pending_rows_past_the_window(db_sessionmaker, seeded):
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="a@campus.edu",
+        email="a@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.9, 0.1],
     )
     b = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="b@campus.edu",
+        email="b@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.5, 0.5],
     )
     c = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="c@campus.edu",
+        email="c@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.4, 0.4],
@@ -1218,7 +1158,7 @@ def test_a_focus_on_somebody_ineligible_falls_through_rather_than_failing():
 
 
 @pytest.mark.asyncio
-async def test_generate_one_pair_re_anchors_on_a_picked_subject(db_sessionmaker, scope):
+async def test_generate_one_pair_re_anchors_on_a_picked_subject(db_sessionmaker, seeded):
     """End to end: a pick becomes a hypothesis, and the next pair tests it.
 
     Without this the unlock is theoretical — seven comparisons of one specific
@@ -1226,8 +1166,7 @@ async def test_generate_one_pair_re_anchors_on_a_picked_subject(db_sessionmaker,
     """
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[1.0, 0.0],
@@ -1235,8 +1174,7 @@ async def test_generate_one_pair_re_anchors_on_a_picked_subject(db_sessionmaker,
     subjects = [
         await _seed_user(
             db_sessionmaker,
-            scope_id=scope.id,
-            email=f"c{i}@campus.edu",
+            email=f"c{i}@example.com",
             visible_as=["man"],
             interested_in=["woman"],
             face=[1.0 - i * 0.01, i * 0.01],
@@ -1268,7 +1206,7 @@ async def test_generate_one_pair_re_anchors_on_a_picked_subject(db_sessionmaker,
 
 
 @pytest.mark.asyncio
-async def test_only_round_one_trains_the_preference_model(db_sessionmaker, scope):
+async def test_only_round_one_trains_the_preference_model(db_sessionmaker, seeded):
     """The decision this rests on, pinned.
 
     A round-2 pick may have been driven by a prompt answer or a degree. Folding
@@ -1278,24 +1216,21 @@ async def test_only_round_one_trains_the_preference_model(db_sessionmaker, scope
     """
     viewer_id = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="v@campus.edu",
+        email="v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
     )
     a = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="a@campus.edu",
+        email="a@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[1.0, 0.0],
     )
     b = await _seed_user(
         db_sessionmaker,
-        scope_id=scope.id,
-        email="b@campus.edu",
+        email="b@example.com",
         visible_as=["woman"],
         interested_in=["man"],
         face=[0.0, 1.0],

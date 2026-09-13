@@ -2,7 +2,7 @@
 
 import pytest
 
-from tests.conftest import CAMPUS_DOMAIN, complete_profile, register_and_verify
+from tests.conftest import TEST_DOMAIN, complete_profile, register_and_verify
 
 
 @pytest.mark.asyncio
@@ -194,9 +194,9 @@ async def test_voice_prompt_rejects_an_audio_key_that_is_not_a_real_asset(client
 async def test_voice_prompt_rejects_someone_elses_asset(client, verified, fake_storage):
     """audio_key names a MediaAsset id — it must belong to the caller, not
     just exist."""
-    from tests.conftest import CAMPUS_DOMAIN, register_and_verify, upload_media
+    from tests.conftest import TEST_DOMAIN, register_and_verify, upload_media
 
-    owner = await register_and_verify(client, f"owner@{CAMPUS_DOMAIN}")
+    owner = await register_and_verify(client, f"owner@{TEST_DOMAIN}")
     stolen_asset_id = await upload_media(
         client, owner["headers"], fake_storage, kind="voice", content_type="audio/webm"
     )
@@ -276,7 +276,7 @@ async def test_reanswering_a_slot_keeps_the_same_row(client, verified, fake_stor
 
 @pytest.mark.asyncio
 async def test_completeness_lists_what_is_missing(client, fake_storage):
-    account = await register_and_verify(client, f"incomplete@{CAMPUS_DOMAIN}")
+    account = await register_and_verify(client, f"incomplete@{TEST_DOMAIN}")
     body = (await client.get("/api/profile", headers=account["headers"])).json()
 
     assert body["completeness"]["complete"] is False

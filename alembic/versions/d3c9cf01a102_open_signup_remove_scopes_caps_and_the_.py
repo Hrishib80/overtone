@@ -1,8 +1,8 @@
-"""phase 05: safety and rate limits
+"""open signup: remove scopes, caps and the waitlist
 
-Revision ID: ee7f324fc0ac
+Revision ID: d3c9cf01a102
 Revises: 
-Create Date: 2026-09-12 23:39:10.070711
+Create Date: 2026-09-13 08:59:41.615461
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 import pgvector.sqlalchemy
 
 # revision identifiers, used by Alembic.
-revision: str = 'ee7f324fc0ac'
+revision: str = 'd3c9cf01a102'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -77,19 +77,6 @@ def upgrade() -> None:
     with op.batch_alter_table('rate_limit_windows', schema=None) as batch_op:
         batch_op.create_index('ix_rate_limit_sweep', ['window_start'], unique=False)
 
-    op.create_table('scopes',
-    sa.Column('id', sa.String(), nullable=False),
-    sa.Column('slug', sa.String(), nullable=False),
-    sa.Column('name', sa.String(), nullable=False),
-    sa.Column('kind', sa.String(), nullable=False),
-    sa.Column('email_domains', sa.JSON(), nullable=False),
-    sa.Column('status', sa.String(), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.PrimaryKeyConstraint('id')
-    )
-    with op.batch_alter_table('scopes', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('ix_scopes_slug'), ['slug'], unique=True)
-
     op.create_table('sexualities',
     sa.Column('id', sa.String(), nullable=False),
     sa.Column('label', sa.String(), nullable=False),
@@ -97,52 +84,24 @@ def upgrade() -> None:
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_table('former_members',
-    sa.Column('id', sa.String(), nullable=False),
-    sa.Column('scope_id', sa.String(), nullable=False),
-    sa.Column('email_hash', sa.String(), nullable=False),
-    sa.Column('left_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['scope_id'], ['scopes.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id')
-    )
-    with op.batch_alter_table('former_members', schema=None) as batch_op:
-        batch_op.create_index('ix_former_member_lookup', ['scope_id', 'email_hash'], unique=False)
-
-    op.create_table('segment_caps',
-    sa.Column('id', sa.String(), nullable=False),
-    sa.Column('scope_id', sa.String(), nullable=False),
-    sa.Column('segment', sa.String(), nullable=False),
-    sa.Column('cap', sa.Integer(), nullable=False),
-    sa.ForeignKeyConstraint(['scope_id'], ['scopes.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('scope_id', 'segment', name='uq_segment_cap')
-    )
-    with op.batch_alter_table('segment_caps', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('ix_segment_caps_scope_id'), ['scope_id'], unique=False)
-
     op.create_table('users',
     sa.Column('id', sa.String(), nullable=False),
     sa.Column('email', sa.String(), nullable=False),
     sa.Column('password_hash', sa.String(), nullable=False),
     sa.Column('display_name', sa.String(), nullable=False),
     sa.Column('birthdate', sa.Date(), nullable=True),
-    sa.Column('scope_id', sa.String(), nullable=True),
     sa.Column('status', sa.String(), nullable=False),
-    sa.Column('cap_segment', sa.String(), nullable=True),
     sa.Column('email_verified_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('last_active_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('processing_status', sa.String(), nullable=False),
     sa.Column('avatar_url', sa.String(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['scope_id'], ['scopes.id'], ondelete='RESTRICT'),
     sa.PrimaryKeyConstraint('id')
     )
     with op.batch_alter_table('users', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_users_email'), ['email'], unique=True)
-        batch_op.create_index(batch_op.f('ix_users_scope_id'), ['scope_id'], unique=False)
-        batch_op.create_index('ix_users_scope_segment_status', ['scope_id', 'cap_segment', 'status'], unique=False)
+        batch_op.create_index('ix_users_status', ['status'], unique=False)
 
     op.create_table('affinities',
     sa.Column('id', sa.String(), nullable=False),
@@ -382,23 +341,6 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('viewer_id', 'segment', name='uq_viewer_preference')
     )
-    op.create_table('waitlist_entries',
-    sa.Column('id', sa.String(), nullable=False),
-    sa.Column('user_id', sa.String(), nullable=False),
-    sa.Column('scope_id', sa.String(), nullable=False),
-    sa.Column('segment', sa.String(), nullable=False),
-    sa.Column('status', sa.String(), nullable=False),
-    sa.Column('joined_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('invited_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('claim_expires_at', sa.DateTime(timezone=True), nullable=True),
-    sa.ForeignKeyConstraint(['scope_id'], ['scopes.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('user_id', name='uq_waitlist_user')
-    )
-    with op.batch_alter_table('waitlist_entries', schema=None) as batch_op:
-        batch_op.create_index('ix_waitlist_queue', ['scope_id', 'segment', 'status', 'joined_at'], unique=False)
-
     op.create_table('chat_messages',
     sa.Column('id', sa.String(), nullable=False),
     sa.Column('connection_id', sa.String(), nullable=False),
@@ -439,10 +381,6 @@ def downgrade() -> None:
         batch_op.drop_index('ix_chat_messages_connection_created')
 
     op.drop_table('chat_messages')
-    with op.batch_alter_table('waitlist_entries', schema=None) as batch_op:
-        batch_op.drop_index('ix_waitlist_queue')
-
-    op.drop_table('waitlist_entries')
     op.drop_table('viewer_preferences')
     op.drop_table('user_visible_as')
     op.drop_table('user_interested_in')
@@ -493,24 +431,11 @@ def downgrade() -> None:
 
     op.drop_table('affinities')
     with op.batch_alter_table('users', schema=None) as batch_op:
-        batch_op.drop_index('ix_users_scope_segment_status')
-        batch_op.drop_index(batch_op.f('ix_users_scope_id'))
+        batch_op.drop_index('ix_users_status')
         batch_op.drop_index(batch_op.f('ix_users_email'))
 
     op.drop_table('users')
-    with op.batch_alter_table('segment_caps', schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f('ix_segment_caps_scope_id'))
-
-    op.drop_table('segment_caps')
-    with op.batch_alter_table('former_members', schema=None) as batch_op:
-        batch_op.drop_index('ix_former_member_lookup')
-
-    op.drop_table('former_members')
     op.drop_table('sexualities')
-    with op.batch_alter_table('scopes', schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f('ix_scopes_slug'))
-
-    op.drop_table('scopes')
     with op.batch_alter_table('rate_limit_windows', schema=None) as batch_op:
         batch_op.drop_index('ix_rate_limit_sweep')
 

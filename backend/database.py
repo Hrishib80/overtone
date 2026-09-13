@@ -123,27 +123,8 @@ async def get_db():
 class UserStatus(enum.StrEnum):
     pending_verification = "pending_verification"
     onboarding = "onboarding"
-    waitlisted = "waitlisted"
     active = "active"
     deleted = "deleted"
-
-
-class ScopeKind(enum.StrEnum):
-    campus = "campus"
-    city = "city"
-
-
-class ScopeStatus(enum.StrEnum):
-    building = "building"  # accepting signups; matching not yet switched on
-    open = "open"
-    closed = "closed"
-
-
-class WaitlistStatus(enum.StrEnum):
-    waiting = "waiting"
-    invited = "invited"
-    claimed = "claimed"
-    expired = "expired"
 
 
 class PromptKind(enum.StrEnum):
@@ -210,84 +191,13 @@ class PromptLibrary(Base):
 
 
 # --------------------------------------------------------------------------
-# Scope, caps and waitlist
-# --------------------------------------------------------------------------
-
-
-class Scope(Base):
-    """A campus now, a city later. Every match query is scoped through this."""
-
-    __tablename__ = "scopes"
-
-    id = Column(String, primary_key=True, default=generate_uuid)
-    slug = Column(String, unique=True, nullable=False, index=True)
-    name = Column(String, nullable=False)
-    kind = Column(String, nullable=False, default=ScopeKind.campus)
-    email_domains = Column(JSON, nullable=False, default=list)
-    status = Column(String, nullable=False, default=ScopeStatus.building)
-    created_at = Column(UTCDateTime(), default=utcnow, nullable=False)
-
-
-class SegmentCap(Base):
-    """Caps are per segment, never one headline number.
-
-    A single global cap fills one segment in a week and starves the other, which
-    is the standard way a dating app dies before it starts.
-    """
-
-    __tablename__ = "segment_caps"
-    __table_args__ = (UniqueConstraint("scope_id", "segment", name="uq_segment_cap"),)
-
-    id = Column(String, primary_key=True, default=generate_uuid)
-    scope_id = Column(String, ForeignKey("scopes.id", ondelete="CASCADE"), nullable=False, index=True)
-    segment = Column(String, nullable=False)
-    cap = Column(Integer, nullable=False)
-
-
-class WaitlistEntry(Base):
-    __tablename__ = "waitlist_entries"
-    __table_args__ = (
-        UniqueConstraint("user_id", name="uq_waitlist_user"),
-        Index("ix_waitlist_queue", "scope_id", "segment", "status", "joined_at"),
-    )
-
-    id = Column(String, primary_key=True, default=generate_uuid)
-    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    scope_id = Column(String, ForeignKey("scopes.id", ondelete="CASCADE"), nullable=False)
-    segment = Column(String, nullable=False)
-    status = Column(String, nullable=False, default=WaitlistStatus.waiting)
-    joined_at = Column(UTCDateTime(), default=utcnow, nullable=False)
-    invited_at = Column(UTCDateTime(), nullable=True)
-    # An unclaimed invitation must expire, or a freed slot sits dead forever.
-    claim_expires_at = Column(UTCDateTime(), nullable=True)
-
-
-class FormerMember(Base):
-    """A salted hash of the email, and nothing else.
-
-    Exists only so that rejoining after deletion goes to the back of the queue.
-    Deliberately unable to identify anyone or reconstruct an account, and it
-    expires on its own so it does not become durable personal data.
-    """
-
-    __tablename__ = "former_members"
-    __table_args__ = (Index("ix_former_member_lookup", "scope_id", "email_hash"),)
-
-    id = Column(String, primary_key=True, default=generate_uuid)
-    scope_id = Column(String, ForeignKey("scopes.id", ondelete="CASCADE"), nullable=False)
-    email_hash = Column(String, nullable=False)
-    left_at = Column(UTCDateTime(), default=utcnow, nullable=False)
-    expires_at = Column(UTCDateTime(), nullable=False)
-
-
-# --------------------------------------------------------------------------
 # Accounts
 # --------------------------------------------------------------------------
 
 
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = (Index("ix_users_scope_segment_status", "scope_id", "cap_segment", "status"),)
+    __table_args__ = (Index("ix_users_status", "status"),)
 
     id = Column(String, primary_key=True, default=generate_uuid)
     email = Column(String, unique=True, index=True, nullable=False)
@@ -295,13 +205,7 @@ class User(Base):
     display_name = Column(String, nullable=False)
     birthdate = Column(Date, nullable=True)
 
-    scope_id = Column(String, ForeignKey("scopes.id", ondelete="RESTRICT"), nullable=True, index=True)
     status = Column(String, nullable=False, default=UserStatus.pending_verification)
-
-    # Which segment this account counts against for cap accounting. Derived from
-    # the primary `visible_as` choice; someone visible in several searches is
-    # counted once, in their primary one.
-    cap_segment = Column(String, nullable=True)
 
     email_verified_at = Column(UTCDateTime(), nullable=True)
     last_active_at = Column(UTCDateTime(), nullable=True)

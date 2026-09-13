@@ -48,7 +48,7 @@ export function createAuthPage(mode) {
         type: 'email',
         autocomplete: 'email',
         inputmode: 'email',
-        placeholder: 'you@campus.edu',
+        placeholder: 'you@example.com',
         required: 'true',
       });
 
@@ -61,7 +61,9 @@ export function createAuthPage(mode) {
         required: 'true',
       });
 
-      form.append(field('Campus email', email, joining ? 'Only your campus address works.' : null));
+      form.append(
+        field('Email', email, joining ? "We'll send you a link to confirm it's yours." : null)
+      );
 
       let name;
       let birthdate;

@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend import access, jobs, options
+from backend import jobs, options
 from backend.auth import current_user
 from backend.database import (
     GenderIdentity,
@@ -314,7 +314,6 @@ async def patch_profile(
         for index, segment in enumerate(visible_as):
             db.add(UserVisibleAs(user_id=user.id, segment=segment, is_primary=index == 0))
         # Cap accounting follows the primary choice.
-        user.cap_segment = visible_as[0]
 
     if interested_in is not None:
         await db.execute(delete(UserInterestedIn).where(UserInterestedIn.user_id == user.id))
@@ -443,8 +442,9 @@ async def _completeness(db: AsyncSession, user: User, profile: Profile) -> dict[
 async def submit_profile(
     user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
-    """Finish onboarding. This is where the cap decides active or waitlisted."""
-    if user.status in (UserStatus.active, UserStatus.waitlisted):
+    """Finish onboarding. A complete profile on a verified address is a member —
+    there is no cap to clear and no queue to join."""
+    if user.status == UserStatus.active:
         return {"status": user.status}
     if user.email_verified_at is None:
         raise AppError("Verify your email address first.")
@@ -457,16 +457,7 @@ async def submit_profile(
             missing=completeness["missing"],
         )
 
-    segment = user.cap_segment
-    if await access.has_room(db, user.scope_id, segment):
-        user.status = UserStatus.active
-        await db.commit()
-        log.info("user_activated", user_id=user.id, segment=segment)
-        return {"status": user.status}
-
-    entry = await access.join_waitlist(db, user, segment)
+    user.status = UserStatus.active
     await db.commit()
-    return {
-        "status": user.status,
-        "waitlist": {"segment": segment, "position": await access.waitlist_position(db, entry)},
-    }
+    log.info("user_activated", user_id=user.id)
+    return {"status": user.status}

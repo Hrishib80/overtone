@@ -112,8 +112,7 @@ async def register(
     await consume(db, REGISTER, client_key(request))
     email = req.email.strip().lower()
 
-    # Campus first, then age. Both refuse before an account exists.
-    scope = await access.resolve_scope(db, email)
+    # Refuses before an account exists.
     access.check_age(req.birthdate)
 
     user = User(
@@ -121,7 +120,6 @@ async def register(
         password_hash=hash_password(req.password),
         display_name=req.display_name.strip(),
         birthdate=req.birthdate,
-        scope_id=scope.id,
         status=UserStatus.pending_verification,
     )
     db.add(user)
@@ -145,13 +143,12 @@ async def register(
     await db.commit()
     await db.refresh(user)
 
-    log.info("user_registered", user_id=user.id, scope_id=scope.id)
+    log.info("user_registered", user_id=user.id)
 
     body: dict[str, object] = {
         "access_token": create_access_token(user.id, user.email),
         "token_type": "bearer",
         "status": user.status,
-        "scope": {"id": scope.id, "name": scope.name, "slug": scope.slug},
     }
     # Returned only when nothing was actually delivered. With a real provider
     # configured, handing the token back would undo the entire point of
@@ -280,10 +277,8 @@ async def login(req: LoginRequest, request: Request, db: AsyncSession = Depends(
 
 
 @router.get("/me")
-async def get_me(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)) -> dict[str, object]:
-    from backend.database import WaitlistEntry, WaitlistStatus
-
-    body: dict[str, object] = {
+async def get_me(user: User = Depends(current_user)) -> dict[str, object]:
+    return {
         "id": user.id,
         "email": user.email,
         "display_name": user.display_name,
@@ -291,27 +286,4 @@ async def get_me(user: User = Depends(current_user), db: AsyncSession = Depends(
         "status": user.status,
         "email_verified": user.email_verified_at is not None,
         "avatar_url": user.avatar_url,
-        "scope_id": user.scope_id,
     }
-
-    if user.status == UserStatus.waitlisted:
-        entry = (
-            (
-                await db.execute(
-                    select(WaitlistEntry)
-                    .where(WaitlistEntry.user_id == user.id)
-                    .where(WaitlistEntry.status != WaitlistStatus.claimed)
-                )
-            )
-            .scalars()
-            .first()
-        )
-        if entry is not None:
-            body["waitlist"] = {
-                "segment": entry.segment,
-                "position": await access.waitlist_position(db, entry),
-                "invited": entry.status == WaitlistStatus.invited,
-                "claim_expires_at": entry.claim_expires_at,
-            }
-
-    return body

@@ -24,11 +24,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # no
 from backend import jobs as jobs_module  # noqa: E402
 from backend import storage  # noqa: E402
 from backend.app import create_app  # noqa: E402
-from backend.database import Base, Scope, ScopeStatus, SegmentCap, get_db  # noqa: E402
+from backend.database import Base, get_db  # noqa: E402
 from backend.handlers import HANDLERS  # noqa: E402
 from backend.seeds import seed_all  # noqa: E402
 
-CAMPUS_DOMAIN = "campus.edu"
+# Any address works now; this is just the one the tests use.
+TEST_DOMAIN = "example.com"
 ADULT_BIRTHDATE = date(2003, 5, 17)
 
 
@@ -129,28 +130,20 @@ async def db_sessionmaker():
 
 
 @pytest_asyncio.fixture
-async def scope(db_sessionmaker):
-    """A campus with room for two people per segment — small enough that cap
-    behaviour is reachable in a test."""
+async def seeded(db_sessionmaker):
+    """Reference data loaded: genders, sexualities, prompts.
+
+    This used to also build a campus with per-segment caps. There is no campus
+    and no cap any more — anyone may join with any address, and a finished
+    profile on a verified address is a member.
+    """
     async with db_sessionmaker() as db:
         await seed_all(db)
-        campus = Scope(
-            slug="testcampus",
-            name="Test Campus",
-            email_domains=[CAMPUS_DOMAIN],
-            status=ScopeStatus.building,
-        )
-        db.add(campus)
-        await db.flush()
-        db.add(SegmentCap(scope_id=campus.id, segment="man", cap=2))
-        db.add(SegmentCap(scope_id=campus.id, segment="woman", cap=2))
         await db.commit()
-        await db.refresh(campus)
-        return campus
 
 
 @pytest_asyncio.fixture
-async def client(db_sessionmaker, scope):
+async def client(db_sessionmaker, seeded):
     app = create_app()
 
     async def override_get_db():
@@ -168,7 +161,7 @@ async def client(db_sessionmaker, scope):
 
 async def register(
     client: AsyncClient,
-    email: str = f"aditi@{CAMPUS_DOMAIN}",
+    email: str = f"aditi@{TEST_DOMAIN}",
     *,
     birthdate: date = ADULT_BIRTHDATE,
     display_name: str = "Aditi",
@@ -188,7 +181,7 @@ async def register(
     return body
 
 
-async def register_and_verify(client: AsyncClient, email: str = f"aditi@{CAMPUS_DOMAIN}", **kw) -> dict:
+async def register_and_verify(client: AsyncClient, email: str = f"aditi@{TEST_DOMAIN}", **kw) -> dict:
     account = await register(client, email, **kw)
     verified = await client.post("/api/auth/verify-email", json={"token": account["verification_token"]})
     assert verified.status_code == 200, verified.text

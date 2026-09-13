@@ -118,7 +118,7 @@ export default {
         createElement(
           'p',
           { className: 'muted' },
-          'Pairs appear once enough people have joined your campus. We will let you know the moment they do.'
+          'Pairs appear once enough people have joined. We will let you know the moment they do.'
         )
       );
       return card;

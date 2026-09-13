@@ -94,14 +94,13 @@ def test_the_bounds_bracket_the_raw_rate():
 # ---------------------------------------------------------------------------
 
 
-async def _seed_user(db_sessionmaker, scope_id, email):
+async def _seed_user(db_sessionmaker, email):
     async with db_sessionmaker() as db:
         user = User(
             email=email,
             password_hash="x",
             display_name=email.split("@")[0],
             birthdate=date(2003, 1, 1),
-            scope_id=scope_id,
             email_verified_at=utcnow(),
         )
         db.add(user)
@@ -110,11 +109,10 @@ async def _seed_user(db_sessionmaker, scope_id, email):
 
 
 @pytest_asyncio.fixture
-async def three(db_sessionmaker, scope):
+async def three(db_sessionmaker, seeded):
     """A viewer and two people to choose between."""
     return [
-        await _seed_user(db_sessionmaker, scope.id, f"{name}@campus.edu")
-        for name in ("viewer", "liked", "passed")
+        await _seed_user(db_sessionmaker, f"{name}@example.com") for name in ("viewer", "liked", "passed")
     ]
 
 

@@ -10,7 +10,7 @@ export default {
     const stage = createElement('div', { className: 'landing__stage' });
 
     const mark = createElement('h1', { className: 'landing__mark' });
-    mark.append('OVERTONE', createElement('em', {}, 'campus'));
+    mark.append('OVERTONE');
 
     const tagline = createElement(
       'p',
@@ -42,7 +42,7 @@ export default {
     const foot = createElement(
       'p',
       { className: 'landing__foot' },
-      'campus email required · 18+'
+      '18+'
     );
 
     page.append(stage, foot);

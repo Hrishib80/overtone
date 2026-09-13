@@ -142,14 +142,13 @@ def test_zero_strength_switches_the_model_off_entirely():
 # ---------------------------------------------------------------------------
 
 
-async def _seed(db_sessionmaker, scope_id, email, face):
+async def _seed(db_sessionmaker, email, face):
     async with db_sessionmaker() as db:
         user = User(
             email=email,
             password_hash="x",
             display_name=email.split("@")[0],
             birthdate=date(2003, 1, 1),
-            scope_id=scope_id,
             email_verified_at=utcnow(),
         )
         db.add(user)
@@ -161,10 +160,10 @@ async def _seed(db_sessionmaker, scope_id, email, face):
 
 
 @pytest_asyncio.fixture
-async def faces(db_sessionmaker, scope):
-    viewer = await _seed(db_sessionmaker, scope.id, "v@campus.edu", None)
-    left = await _seed(db_sessionmaker, scope.id, "left@campus.edu", LIKES_LEFT)
-    right = await _seed(db_sessionmaker, scope.id, "right@campus.edu", LIKES_RIGHT)
+async def faces(db_sessionmaker, seeded):
+    viewer = await _seed(db_sessionmaker, "v@example.com", None)
+    left = await _seed(db_sessionmaker, "left@example.com", LIKES_LEFT)
+    right = await _seed(db_sessionmaker, "right@example.com", LIKES_RIGHT)
     return viewer, left, right
 
 
@@ -206,11 +205,11 @@ async def test_taste_is_learned_per_segment_not_per_person(db_sessionmaker, face
 
 
 @pytest.mark.asyncio
-async def test_a_missing_face_is_skipped_rather_than_guessed(db_sessionmaker, scope, faces):
+async def test_a_missing_face_is_skipped_rather_than_guessed(db_sessionmaker, seeded, faces):
     """A photo that has not finished processing is still a valid comparison
     for rating purposes — it just has nothing here to learn from."""
     viewer, left, _right = faces
-    faceless = await _seed(db_sessionmaker, scope.id, "pending@campus.edu", None)
+    faceless = await _seed(db_sessionmaker, "pending@example.com", None)
 
     async with db_sessionmaker() as db:
         skipped = await observe(db, viewer_id=viewer, segment="woman", chosen_id=left, rejected_id=faceless)

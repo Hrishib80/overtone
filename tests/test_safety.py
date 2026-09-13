@@ -31,7 +31,7 @@ from backend.database import (
 )
 from backend.pairing import generate_one_pair
 from backend.safety import blocked_ids, is_blocked
-from tests.conftest import CAMPUS_DOMAIN, onboard
+from tests.conftest import TEST_DOMAIN, onboard
 
 UNLOCK_RUN = 7
 
@@ -52,16 +52,16 @@ async def _force_unlock(db_sessionmaker, viewer_id, subject_id, foil_id):
 async def people(client, db_sessionmaker, fake_storage):
     """Two who may end up talking, and a foil to lose pairs to."""
     ada = await onboard(
-        client, f"ada@{CAMPUS_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
+        client, f"ada@{TEST_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
     )
     foil = await onboard(
-        client, f"foil@{CAMPUS_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
+        client, f"foil@{TEST_DOMAIN}", visible_as=["woman"], interested_in=["man"], store=fake_storage
     )
     ben = await onboard(
-        client, f"ben@{CAMPUS_DOMAIN}", visible_as=["man"], interested_in=["woman"], store=fake_storage
+        client, f"ben@{TEST_DOMAIN}", visible_as=["man"], interested_in=["woman"], store=fake_storage
     )
     for who, email in ((ada, "ada"), (foil, "foil"), (ben, "ben")):
-        who["id"] = await _user_id(db_sessionmaker, f"{email}@{CAMPUS_DOMAIN}")
+        who["id"] = await _user_id(db_sessionmaker, f"{email}@{TEST_DOMAIN}")
     return ada, foil, ben
 
 
@@ -148,16 +148,14 @@ async def test_unblocking_restores_nothing_but_visibility(client, db_sessionmake
 # ---------------------------------------------------------------------------
 
 
-async def _seed_pairable(db_sessionmaker, scope_id, email, *, visible_as, interested_in, face):
+async def _seed_pairable(db_sessionmaker, email, *, visible_as, interested_in, face):
     async with db_sessionmaker() as db:
         user = User(
             email=email,
             password_hash="x",
             display_name=email.split("@")[0],
             birthdate=date(2003, 1, 1),
-            scope_id=scope_id,
             status=UserStatus.active,
-            cap_segment=visible_as[0],
             email_verified_at=utcnow(),
         )
         db.add(user)
@@ -172,13 +170,12 @@ async def _seed_pairable(db_sessionmaker, scope_id, email, *, visible_as, intere
 
 
 @pytest.mark.asyncio
-async def test_a_blocked_person_is_never_paired_again(db_sessionmaker, scope):
+async def test_a_blocked_person_is_never_paired_again(db_sessionmaker, seeded):
     """The surface that matters most: blocking someone has to take them out of
     the deck, not just out of the inbox."""
     viewer = await _seed_pairable(
         db_sessionmaker,
-        scope.id,
-        "v@campus.edu",
+        "v@example.com",
         visible_as=["man"],
         interested_in=["woman"],
         face=[1.0, 0.0],
@@ -186,8 +183,7 @@ async def test_a_blocked_person_is_never_paired_again(db_sessionmaker, scope):
     candidates = [
         await _seed_pairable(
             db_sessionmaker,
-            scope.id,
-            f"c{i}@campus.edu",
+            f"c{i}@example.com",
             visible_as=["woman"],
             interested_in=["man"],
             face=[1.0 - i * 0.01, i * 0.01],

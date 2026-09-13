@@ -91,14 +91,14 @@ export default {
       show(
         '✓',
         "That's confirmed",
-        'Your campus address is verified. Sign in to finish setting up your profile.',
+        'Your address is verified. Sign in to finish setting up your profile.',
         go
       );
     }
 
     /* ---- waiting for the link ---- */
     function waiting() {
-      const address = me?.email || 'your campus address';
+      const address = me?.email || 'your address';
 
       const resend = createElement(
         'button',
@@ -129,16 +129,16 @@ export default {
         }
       });
 
+      const devToken = sessionStorage.getItem('overtone_dev_verification');
+
       show(
         '✉',
-        'Check your campus inbox',
+        'Check your inbox',
         `We sent a link to ${address}. Open it to carry on — it works once and lasts 24 hours.`,
         resend,
+        ...(devToken ? [devShortcut(devToken)] : []),
         signOutButton()
       );
-
-      const devToken = sessionStorage.getItem('overtone_dev_verification');
-      if (devToken) card.append(devShortcut(devToken));
     }
 
     /* Development only. Present exactly when the server told us nothing was

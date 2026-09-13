@@ -12,7 +12,7 @@ making architectural changes.
 
 ## Current state
 
-Phases 00–04 are complete and committed. **243 tests passing**, lint clean,
+Phases 00–04 are complete, phase 05 is under way. **287 tests passing**, lint clean,
 migration round-trips, frontend builds, and the whole loop — pair, unlock,
 request, reply — has been driven end to end in a browser at phone and laptop
 width.
@@ -61,9 +61,7 @@ export ENVIRONMENT=development ALLOWED_ORIGINS="*"
 
 alembic upgrade head
 python scripts/manage.py seed                     # 81 prompts, 38 genders, 30 sexualities
-python scripts/manage.py scope-create --slug demo --name "Demo University" \
-    --domain demo.edu --cap man=600 --cap woman=600
-python scripts/seed_demo.py --scope demo          # 20 fake people, local SVG portraits
+python scripts/seed_demo.py                       # 20 fake people, local SVG portraits
 
 python -m uvicorn backend.app:app --port 8000     # API
 npx vite --port 5173                              # frontend
@@ -78,7 +76,8 @@ silently makes the whole mechanic impossible for whoever is on the short side
 — twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
-pytest                       # 243 tests, no network, no models needed
+pytest                       # 287 tests, no network, no models needed
+python scripts/manage.py stats   # pool size per segment — the number to watch
 ruff check . && ruff format --check .
 alembic check                # fails if models drifted from migrations
 python worker.py --status    # which models this process would use (free, offline)
@@ -113,8 +112,8 @@ Averaging across audiences would describe nobody.
 
 **Ratings are never shown to anyone, ever.** Not as a number, not as a rank, not
 reverse-engineerable from ordering or frequency. This is the line between a
-preference engine and something that hurts people on a campus where everyone
-knows each other. Decided explicitly; do not soften it.
+preference engine and something that hurts people in a community where they
+recognise each other. Decided explicitly; do not soften it.
 
 ### Why Glicko-2 over Elo
 
@@ -244,42 +243,45 @@ deep-navy `--sky`, are redefined for dark mode.
 own `interested_in` choice reflected back; it says nothing about either
 subject, so round 1's photo-only rule is untouched.
 
-### The campus gate
+### Joining
 
-**The domain check is not the gate. The verification link is.** Refusing
-anything that is not `@campus.edu` proves only that the person knows what the
-campus domain is — anyone can type `someone@campus.edu`. What makes an account
-mean "a student" is that a link arrived in a mailbox at that domain and
-somebody opened it. This is the single identity anchor the whole product rests
-on; everything else (caps, ban evasion costing something, a bounded
-population) is downstream of it.
+**Anyone may join with any address.** The campus domain check is gone, and so
+are `Scope`, per-segment caps, the waitlist and the former-member hash. One
+pool, one rule: you have to be 18.
 
-So: **the token is returned in the API response only when nothing was actually
-delivered** (`mail.delivers()` is false). Handing it back with a real provider
-configured would undo the entire point of sending it. And **production refuses
-to start on the console mailer** — in that mode every signup mints a token that
-reaches nobody, so the gate silently admits no one at all.
+That was a real trade and the cost is worth stating plainly. The campus domain
+was the identity anchor — it bounded the population to people who genuinely
+belonged somewhere, and it made ban evasion expensive, because coming back
+meant obtaining another university mailbox. A personal account removes both.
+What carries that weight now: email verification, the 18+ check, blocking,
+reporting and rate limits. **If ban evasion becomes a real problem the answer
+is phone verification or invite codes, not bringing the domain back** — the
+domain only ever worked because a second university mailbox is hard to get.
 
-**SMTP, not one vendor's HTTP API.** It is the single interface SES, Postmark,
-Resend, Mailgun, Google Workspace and a university's own relay all speak, and
-a campus launch is exactly where the relay you are eventually allowed to use is
-not the one you planned for.
+**Email verification still matters, and now it is the whole gate.** A domain
+check proved the person knew the domain; the link proves they can read mail at
+the address they gave. So: the token is returned in the API response **only**
+when nothing was actually delivered (`mail.delivers()` is false), and
+production **refuses to start** on the console mailer, because in that mode
+every signup mints a token that reaches nobody.
 
-**Delivery runs through the job queue**, so a provider that is briefly down
-costs a retry rather than an account nobody can ever verify. The message is
-built at enqueue time and carried whole in the payload — by send time the
-account may be gone, and a link that cannot be regenerated beats one that
-quietly stops being sent.
+**`/verify` is public whenever the URL carries a token.** The link is its own
+credential and is usually opened on a different device from the one that
+registered — the laptop signs up, the phone reads the mail. The token is
+scrubbed from the address bar once spent.
 
-**Resend answers identically for an address that does not exist.** On one
-campus, "does this person have an Overtone account" is a question about
-somebody's private life.
+**SMTP, not one vendor's HTTP API** — the single interface SES, Postmark,
+Resend, Mailgun, Workspace and a university relay all speak. **Delivery runs
+through the job queue**, so a provider briefly down costs a retry rather than
+an account nobody can verify. **Resend answers identically for an address that
+does not exist**, because "does this person have an account" is a question
+about somebody's private life.
 
-**`/verify` is a public route whenever the URL carries a token.** The link is
-its own credential and is very often opened on a different device from the one
-that registered — the laptop signs up, the phone reads the mail. Requiring a
-session there would make the link useless for most of the people who click it.
-The token is scrubbed from the address bar once spent.
+**There is no population boundary at all.** Every active account is in one
+pool. The seam where one would go back is a single `.where(...)` in
+`pairing._eligible_candidates`, plus whatever column decides which pool
+somebody is in — that is the whole change, if per-college or per-city pools
+are ever wanted.
 
 ### Safety
 
@@ -306,8 +308,9 @@ report means little, four from unrelated people is the pattern.
 
 ### Rate limits
 
-**Address-keyed limits must stay loose, and this is the reason.** A university
-is a handful of public addresses in front of thousands of students. Any
+**Address-keyed limits must stay loose, and this is the reason.** A university,
+office or shared connection is a handful of public addresses in front of many
+people. Any
 per-address limit tight enough to be a real brute-force defence locks out
 everyone on campus wifi during the launch rush — the worst moment, and almost
 undiagnosable from outside (everyone on wifi refused, everyone on mobile data
@@ -375,12 +378,12 @@ limit — no flag to flip, no cliff.
 | 500–1500 | 0.05 (design operating point) |
 | > 1500 | 0.02 |
 
-These are **per audience segment**, not per campus. 400 students skewed 80/20
-leaves one pool at 80 — still bootstrap.
+These are **per audience segment**, not per population. 400 members skewed
+80/20 leaves one pool at 80 — still bootstrap.
 
 **Anchor sampling is weighted toward low exposure and high deviation.** Without
 it, ANN retrieval returns the same central profiles forever and the tail of the
-campus is never seen.
+population is never seen.
 
 **Scored in Python, not with a native ANN query.** Deliberate: the anchor
 weighting and percentile band aren't expressible as one SQL query anyway, pool
@@ -404,18 +407,25 @@ against what storage reports.
 machine must never download gigabytes by surprise. Production always uses them
 and fails hard at startup if one is missing.
 
-### Access control
+### Balance, without a cap to enforce it
 
-**Caps are per segment, never one headline number.** A single global cap fills
-one side in a week and starves the other — the standard way a dating app dies
-before it starts. Waitlist admission favours the under-filled segment.
+Caps and the waitlist are gone, but the problem they existed for has not: **a
+population that fills up on one side and starves the other is the standard way
+a dating app dies before it starts.** There is now nothing in the code stopping
+that — it has to be watched instead.
 
-**The cap must clear the pairing floor** (~500/segment). A cap below that
-doesn't create desirable scarcity, it creates a product that can't form pairs.
+`python scripts/manage.py stats` is the thing to run. It reports per segment,
+not as a headline total, because a thousand members split badly is still a
+broken app for whoever is on the short side. The two numbers that matter:
 
-**Rejoin-after-deletion** keeps only a salted email hash, expiring at 12 months,
-purely so re-joining queues fairly. It is the one tension with the deletion
-guarantee and is disclosed in plain words.
+| Segment size | What works |
+|---|---|
+| under 8 | no unlock is reachable at all |
+| under ~500 | below the similarity band's design point |
+
+If the split does go bad, the answers are invitation controls or paused
+signups on the over-full side — both of which mean bringing something like a
+cap back deliberately, rather than discovering the need at launch.
 
 ---
 
@@ -602,10 +612,11 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Open questions needing a human answer
 
-1. **What is the initial per-segment cap?** Must clear ~500/segment for pairing
-   to work at its design point. If the campus can't supply ~1000 verified
-   students, the honest options are a lower cap with a longer bootstrap stage,
-   or launching two campuses at once.
+1. **How does the population stay balanced with no cap?** Nothing enforces it
+   now. A segment needs ~500 for the similarity band to work and at least 8
+   before any unlock is possible, so a lopsided signup rush is a silent
+   failure for whoever is on the short side. Watch `manage.py stats`; decide
+   in advance what you will do if it skews.
 2. **Does a person know they appeared at all?** The weekly count is the safe
    version; a live "you were shown to someone" signal is more engaging and
    closer to the line drawn on rating privacy.
@@ -627,7 +638,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 243 and rising; every bug found gets a regression
+- **Tests are the contract.** 287 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.

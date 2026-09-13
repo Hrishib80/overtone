@@ -4,7 +4,7 @@ Development only — it writes users directly rather than walking the signup
 flow, and it fabricates face embeddings instead of running the real models.
 Never point this at anything but a local database.
 
-    python scripts/seed_demo.py --scope demo
+    python scripts/seed_demo.py
 
 The pool is sized so the unlock is reachable *in both directions*. Clearing
 the Wilson bound takes seven comparisons of one person and a pair may only be
@@ -40,7 +40,6 @@ from backend.database import (  # noqa: E402
     ProfileEmbedding,
     PromptKind,
     PromptResponse,
-    Scope,
     User,
     UserInterestedIn,
     UserStatus,
@@ -118,7 +117,7 @@ def face_vector(index: int, rng: random.Random) -> list[float]:
     return l2_normalise([b + j for b, j in zip(base, jitter, strict=True)])
 
 
-async def seed(scope_slug: str, media_root: Path) -> None:
+async def seed(media_root: Path) -> None:
     rng = random.Random(7)
     media_root.mkdir(parents=True, exist_ok=True)
 
@@ -128,12 +127,7 @@ async def seed(scope_slug: str, media_root: Path) -> None:
     password_hash = pwd.hash(PASSWORD_HASH_FOR)
 
     async with AsyncSessionLocal() as db:
-        scope = (await db.execute(select(Scope).where(Scope.slug == scope_slug))).scalars().first()
-        if scope is None:
-            print(f"No scope '{scope_slug}'. Create it first with manage.py scope-create.", file=sys.stderr)
-            raise SystemExit(1)
-
-        domain = (scope.email_domains or ["demo.edu"])[0]
+        domain = "demo.edu"
         created = 0
 
         for index, (name, visible, interested, school, strength) in enumerate(PEOPLE):
@@ -146,9 +140,7 @@ async def seed(scope_slug: str, media_root: Path) -> None:
                 password_hash=password_hash,
                 display_name=name,
                 birthdate=date(2003, 1 + index % 12, 1 + index % 27),
-                scope_id=scope.id,
                 status=UserStatus.active,
-                cap_segment=visible,
                 email_verified_at=utcnow(),
             )
             db.add(user)
@@ -235,15 +227,13 @@ async def seed(scope_slug: str, media_root: Path) -> None:
 
         await db.commit()
 
-    print(f"Seeded {created} demo people into '{scope_slug}'.")
+    print(f"Seeded {created} demo people.")
     print(f"Sign in as any of: {', '.join(n.lower() + '@' + domain for n, *_ in PEOPLE[:3])} …")
     print(f"Password for all: {PASSWORD_HASH_FOR}")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scope", default="demo")
-    args = parser.parse_args()
+    argparse.ArgumentParser(description=__doc__).parse_args()
 
     if settings.is_production:
         print("Refusing to run against a production environment.", file=sys.stderr)
@@ -252,7 +242,7 @@ def main() -> int:
         print("DATABASE_URL is not configured.", file=sys.stderr)
         return 2
 
-    asyncio.run(seed(args.scope, Path(settings.media_root)))
+    asyncio.run(seed(Path(settings.media_root)))
     return 0
 
 
