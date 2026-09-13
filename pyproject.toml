@@ -33,3 +33,4 @@ ignore = [
 # Dev-only seeding CLI: the demo password is the point, the RNG is seeded for
 # reproducible fake data, and blocking file writes are fine in a one-shot script.
 "scripts/seed_demo.py" = ["S105", "S311", "ASYNC240"]
+"scripts/calibrate.py" = ["S311"]      # seeded Monte Carlo, not a secret

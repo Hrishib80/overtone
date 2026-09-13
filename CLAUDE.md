@@ -98,6 +98,7 @@ python scripts/manage.py stats   # pool size per segment — the number to watch
 python scripts/manage.py reviewer --email you@example.com   # open the review queue
 python scripts/check_storage.py  # why uploads are or are not working
 python scripts/check_contrast.py --token "<jwt>"   # text nobody can read, both themes
+python scripts/calibrate.py --sweep   # what the unlock dials cost, before real data
 ruff check . && ruff format --check .
 alembic check                # fails if models drifted from migrations
 python worker.py --status    # which models this process would use (free, offline)
@@ -1119,6 +1120,14 @@ an action or introduces content; nothing here loops or decorates.
 - Tune, on real decisions: the round-2 weight (2.5), the unlock threshold
   (0.70), the confidence level (90%), `RE_EXPOSURE_RATE` (0.5) and
   `preference.TILT` (0.5). These are the five dials.
+
+  Two of them — threshold and confidence — now have a harness.
+  `scripts/calibrate.py` draws Bernoulli trials at a known rate and runs the
+  real `affinity.classify` after each, so it says what a setting *costs*
+  without pretending to know what real people are like. It cannot tune
+  anything: the missing input is the distribution of true preference rates
+  across a real population, and that needs the beta. What it does is stop the
+  tuning conversation from being conducted on intuition.
 - Load test, runbook, closed beta, campus unlock.
 
 ### Known gaps in what's built
@@ -1167,10 +1176,27 @@ an action or introduces content; nothing here loops or decorates.
    validated only against a synthetic tone. Record 20s each of Telugu, Hindi and
    code-mixed English from a real student and compare providers.
 4. **Is seven picks the right price for an unlock?** It falls out of 0.70 at
-   90% confidence rather than being chosen directly. Lower either and unlocks
-   come faster and mean less; raise them and most viewers never reach one. This
-   is the number that decides whether the app feels alive, and it cannot be
-   settled without watching real people use it.
+   90% confidence rather than being chosen directly, and it still cannot be
+   settled without watching real people. But `scripts/calibrate.py` now says
+   what each setting costs, and two things are worth knowing before that
+   conversation starts.
+
+   At the shipped 0.70 / 90%: a coin flip clears the bar **0.9%** of the time,
+   somebody you genuinely prefer 9 times in 10 unlocks **87%** of the time,
+   and 8 in 10 unlocks **44%** of the time at a median of 13 comparisons.
+
+   **Dropping the confidence level to 80% is a cliff, not a dial.** The
+   fastest unlock falls from 7 straight picks to 4, and the false-unlock rate
+   goes from 0.9% to **6.7%** — one in fifteen unlocks would be a viewer being
+   told they have a type they do not have, and then spending their one opening
+   message on it. If unlocks turn out to be too rare in the beta, move the
+   threshold (0.65 buys 28% at p=0.7 for 2.4% false) rather than the
+   confidence.
+
+   The missing input is the distribution of true rates across real people. If
+   most real preferences sit near 0.6, the current setting unlocks almost
+   nothing; if they sit near 0.9, it works as designed. Nothing but the beta
+   answers that.
 5. **Should a declined request be visible to the sender at all?** Today it
    simply disappears from both inboxes — no "declined" state shown, and no way
    to tell it apart from a request still waiting. Kinder, but it does leave
