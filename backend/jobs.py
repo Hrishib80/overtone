@@ -43,9 +43,6 @@ class JobKind(enum.StrEnum):
     process_photo = "process_photo"
     process_voice = "process_voice"
     refresh_text = "refresh_text"
-    # Delivery goes through the queue so a provider that is briefly down costs
-    # a retry, not an account nobody can ever verify.
-    send_email = "send_email"
 
 
 class Job(Base):

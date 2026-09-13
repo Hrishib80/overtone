@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from backend import mail, storage
+from backend import storage
 from backend.account import router as account_router
 from backend.auth import router as auth_router
 from backend.config import settings
@@ -50,16 +50,12 @@ async def lifespan(app: FastAPI):
         log.warning("database_not_configured")
 
     # Same discipline as the model layer: a misconfiguration that only shows
-    # up when the first person tries to sign up is one found too late. In
-    # production a console mailer means nobody can ever verify an address.
-    mail.check_configuration()
+    # up when the first person tries to upload is one found too late.
     storage.check_configuration()
 
     log.info(
         "app_started",
         environment=settings.environment,
-        mail_provider=settings.mail_provider,
-        mail_delivers=mail.delivers(),
         storage_provider=settings.storage_provider,
     )
     yield

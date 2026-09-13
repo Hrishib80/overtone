@@ -3,22 +3,23 @@ import store from './store.js';
 /* Where an account belongs, given its status. Onboarding is a funnel: you
    cannot skip ahead, and you cannot fall back into a step you've finished. */
 const HOME_FOR_STATUS = {
-  pending_verification: '/verify',
+  /* There is no verification step any more, but rows predating its removal
+     still carry the status. They belong in onboarding like everybody else —
+     leaving them pointed at a route that no longer exists would strand them
+     on the landing page with no way forward. */
+  pending_verification: '/onboarding',
   onboarding: '/onboarding',
   active: '/pairs',
   suspended: '/suspended',
 };
 
-/* `/unsubscribe` is public for the same reason the endpoint behind it is: it
-   is opened from an email, by somebody who may have no way to sign in and no
-   wish to. Sending them to the landing page to log in first is how an
-   unsubscribe becomes a spam report. */
-const PUBLIC_ROUTES = new Set(['/', '/join', '/signin', '/unsubscribe']);
+const PUBLIC_ROUTES = new Set(['/', '/join', '/signin']);
 
 /* Routes an account may visit besides its home. Onboarding stays a funnel —
    these are the places you can only get to once you are through it. */
 const ALSO_ALLOWED = {
-  active: new Set(['/inbox', '/settings', '/review']),
+  pending_verification: new Set(['/onboarding', '/settings']),
+  active: new Set(['/messages', '/type', '/chosen', '/profile', '/settings', '/review']),
   // Settings is reachable mid-onboarding too, because withdrawing consent and
   // deleting the account are things a half-finished profile must be able to
   // do — being stuck inside a funnel is not a reason to lose that.
@@ -59,16 +60,6 @@ class Router {
   /** Where this visitor should be, or null if the path they asked for is fine. */
   redirectFor(path) {
     const { token, me } = store.getState();
-
-    // A verification link carries its own credential and is very often opened
-    // on a different device from the one that registered — the laptop signs
-    // up, the phone reads the email. Redirecting that to the landing page
-    // would make the link useless for most of the people who click it.
-    if (path === '/verify' && new URLSearchParams(location.search).has('token')) return null;
-    // Same argument, and it has to hold for a signed-in visitor too: being
-    // logged in on this device is not a reason to be bounced to your inbox
-    // when you asked to stop getting email.
-    if (path === '/unsubscribe') return null;
 
     if (!token) return PUBLIC_ROUTES.has(path) ? null : '/';
     if (!me) return null; // still loading; app.js resolves before starting

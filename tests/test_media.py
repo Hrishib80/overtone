@@ -111,8 +111,7 @@ async def test_photo_is_gated_and_embedded(client, verified, fake_storage, db_se
     fake_storage[body["object_key"]] = PNG
     await client.post(f"/api/media/{body['asset_id']}/confirm", headers=verified["headers"], json={})
 
-    # One photo job, plus the verification email queued at registration.
-    assert await run_jobs(db_sessionmaker) == 2
+    assert await run_jobs(db_sessionmaker) == 1
 
     async with db_sessionmaker() as db:
         asset = await db.get(MediaAsset, body["asset_id"])

@@ -1,4 +1,5 @@
 import { createElement } from '../utils/dom.js';
+import { navbar, reviewerLink } from '../components/navbar.js';
 import api from '../services/api.js';
 import router from '../services/router.js';
 import store from '../services/store.js';
@@ -20,19 +21,25 @@ export default {
   async render() {
     const page = createElement('div', { className: 'settings' });
 
+    // Mid-onboarding there is no bar to show — the funnel has its own way
+    // out, and half a navigation is worse than none.
+    const onboarding = store.getState().me?.status === 'onboarding';
+    const nav = onboarding ? null : navbar('/settings');
+    if (nav) reviewerLink(nav);
+
     const head = createElement('header', { className: 'settings__head' });
     const headInner = createElement('div', { className: 'settings__head-inner' });
-    // Back goes where this account actually lives. Sending a half-onboarded
-    // person to /pairs would bounce them through a redirect to get there.
-    const onboarding = store.getState().me?.status === 'onboarding';
-    const back = createElement('button', { className: 'settings__back', type: 'button' });
-    back.innerHTML = `<span aria-hidden="true">&larr;</span> ${onboarding ? 'Your profile' : 'Pairs'}`;
-    back.addEventListener('click', () => router.go(onboarding ? '/onboarding' : '/pairs'));
-    headInner.append(back, createElement('h1', { className: 'settings__title' }, 'Settings'));
+    if (onboarding) {
+      const back = createElement('button', { className: 'settings__back', type: 'button' });
+      back.innerHTML = '<span aria-hidden="true">&larr;</span> Your profile';
+      back.addEventListener('click', () => router.go('/onboarding'));
+      headInner.append(back);
+    }
+    headInner.append(createElement('h1', { className: 'settings__title' }, 'Settings'));
     head.append(headInner);
 
     const body = createElement('main', { className: 'settings__body' });
-    page.append(head, body);
+    page.append(...(nav ? [nav] : []), head, body);
 
     function section(title, lede) {
       const card = createElement('section', { className: 'settings__card' });
@@ -178,62 +185,6 @@ export default {
       }
     }
 
-    // ---- email ------------------------------------------------------------
-
-    const mailCard = section(
-      'Email',
-      'Two emails, and only two: somebody wrote to you, and somebody answered you. Never the message itself — that stays in the app.'
-    );
-    const mailBody = createElement('div', { className: 'settings__consent' });
-    mailCard.append(mailBody);
-
-    async function loadMail() {
-      let state;
-      try {
-        state = await api.getNotifications();
-      } catch (error) {
-        mailBody.replaceChildren(createElement('p', { className: 'settings__muted' }, error.message));
-        return;
-      }
-
-      const on = state.email_notifications;
-      mailBody.replaceChildren(
-        createElement(
-          'p',
-          { className: `settings__status ${on ? 'is-on' : 'is-off'}` },
-          on ? 'On' : 'Off'
-        )
-      );
-
-      const toggle = createElement(
-        'button',
-        { className: on ? 'btn btn--ghost' : 'btn', type: 'button' },
-        on ? 'Turn them off' : 'Turn them on'
-      );
-      toggle.addEventListener('click', async () => {
-        toggle.disabled = true;
-        try {
-          await api.setNotifications(!on);
-        } catch (error) {
-          toast(error.message, { error: true });
-          toggle.disabled = false;
-          return;
-        }
-        await loadMail();
-      });
-      mailBody.append(toggle);
-
-      if (!on) {
-        mailBody.append(
-          createElement(
-            'p',
-            { className: 'settings__note' },
-            'With these off, the only way to find out somebody wrote to you is to open the app.'
-          )
-        );
-      }
-    }
-
     // ---- deletion --------------------------------------------------------
 
     const deleteCard = section(
@@ -304,9 +255,13 @@ export default {
 
     deleteCard.append(openDelete, deleteForm);
 
-    body.append(blocksCard, consentCard, mailCard, deleteCard);
+    body.append(blocksCard, consentCard, deleteCard);
 
-    page.mounted = () => Promise.all([loadBlocks(), loadConsent(), loadMail()]);
+    page.mounted = () => {
+      nav?.mounted();
+      return Promise.all([loadBlocks(), loadConsent()]);
+    };
+    page.destroy = () => nav?.destroy();
     return page;
   },
 };

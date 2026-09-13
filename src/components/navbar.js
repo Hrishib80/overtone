@@ -1,0 +1,141 @@
+import { createElement } from '../utils/dom.js';
+import api from '../services/api.js';
+import router from '../services/router.js';
+import store from '../services/store.js';
+
+/* One bar across every signed-in screen.
+
+   Before this the app was a set of rooms with one door each: the pair view
+   had a single footer link, and everything else was reachable only by going
+   back through it. Five destinations that each mean something different, and
+   no way to see that four of them existed.
+
+   **My type and Keep choosing you are not the same list and must not look
+   like one.** My type is who *you* keep picking — it is a description of your
+   taste, assembled from your own choices. Keep choosing you is who picks
+   *you*, often, over whoever they were shown against. One is an output of
+   your behaviour, the other of everybody else's, and collapsing them into a
+   single "your people" page was the mistake this replaces.
+
+   The counts are the point of the bar, not decoration: a number next to
+   Messages is the whole of the "you have a new message" nudge, which is why
+   there is no push notification and no email. It has to be visible from
+   wherever you are, or it is not a nudge.
+*/
+
+const ITEMS = [
+  { path: '/pairs', label: 'Pairs', hint: 'Choose between two people' },
+  { path: '/type', label: 'My type', hint: 'The people you keep choosing' },
+  { path: '/chosen', label: 'Keep choosing you', hint: 'The people who keep choosing you' },
+  { path: '/messages', label: 'Messages', hint: 'Requests and conversations' },
+  { path: '/profile', label: 'Profile', hint: 'Edit how you appear' },
+  { path: '/settings', label: 'Settings', hint: 'Blocks, consent, your account' },
+];
+
+/* Shared across every screen that mounts a bar, so switching pages does not
+   re-ask the server for counts it fetched a second ago. Invalidated by
+   `refreshNav()` whenever something changes them. */
+let cached = null;
+let inFlight = null;
+const mounted = new Set();
+
+async function counts() {
+  if (cached) return cached;
+  if (!inFlight) {
+    inFlight = (async () => {
+      try {
+        const inbox = await api.getInbox();
+        cached = {
+          '/type': inbox.unlocked.length,
+          '/chosen': inbox.admirers.length,
+          // Requests plus anything unread: both are somebody waiting on you.
+          '/messages':
+            inbox.requests.length +
+            inbox.conversations.reduce((n, c) => n + (c.unread > 0 ? 1 : 0), 0),
+        };
+      } catch {
+        // A bar that throws would take the page down with it. No counts is a
+        // worse bar, not a broken screen.
+        cached = {};
+      } finally {
+        inFlight = null;
+      }
+      return cached;
+    })();
+  }
+  return inFlight;
+}
+
+/** Something changed the counts — drop them and repaint every live bar. */
+export function refreshNav() {
+  cached = null;
+  for (const paint of mounted) paint();
+}
+
+export function navbar(current) {
+  const nav = createElement('nav', { className: 'nav', 'aria-label': 'Main' });
+  const inner = createElement('div', { className: 'nav__inner' });
+
+  const mark = createElement('button', { className: 'nav__mark', type: 'button' });
+  mark.innerHTML = 'Over<b>tone</b>';
+  mark.addEventListener('click', () => router.go('/pairs'));
+
+  const list = createElement('div', { className: 'nav__links' });
+  const badges = new Map();
+
+  for (const item of ITEMS) {
+    const link = createElement('button', {
+      className: `nav__link${item.path === current ? ' is-here' : ''}`,
+      type: 'button',
+      title: item.hint,
+      ...(item.path === current ? { 'aria-current': 'page' } : {}),
+    });
+    link.append(createElement('span', { className: 'nav__label' }, item.label));
+
+    const badge = createElement('span', { className: 'nav__count', hidden: 'hidden' });
+    link.append(badge);
+    badges.set(item.path, badge);
+
+    link.addEventListener('click', () => router.go(item.path));
+    list.append(link);
+  }
+
+  const out = createElement('button', { className: 'nav__out', type: 'button' }, 'Sign out');
+  out.addEventListener('click', () => {
+    store.signOut();
+    router.go('/');
+  });
+
+  inner.append(mark, list, out);
+  nav.append(inner);
+
+  async function paint() {
+    const n = await counts();
+    for (const [path, badge] of badges) {
+      const value = n[path] || 0;
+      badge.textContent = value > 99 ? '99+' : String(value);
+      badge.hidden = value === 0;
+      // The label already says what it is; the count needs saying out loud
+      // for anyone who cannot see the pill.
+      const item = ITEMS.find((i) => i.path === path);
+      badge.setAttribute('aria-label', value ? `${value} in ${item.label}` : '');
+    }
+  }
+
+  nav.mounted = () => {
+    mounted.add(paint);
+    paint();
+  };
+  nav.destroy = () => mounted.delete(paint);
+
+  return nav;
+}
+
+/** The review queue is not in the bar — it is staff-only and would be a
+    permanent empty tab for everybody else. It goes beside Sign out instead. */
+export function reviewerLink(nav) {
+  if (!store.getState().me?.is_reviewer) return;
+  const link = createElement('button', { className: 'nav__out', type: 'button' }, 'Review');
+  link.addEventListener('click', () => router.go('/review'));
+  nav.querySelector('.nav__inner').insertBefore(link, nav.querySelector('.nav__out'));
+}

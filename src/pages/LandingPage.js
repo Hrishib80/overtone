@@ -203,7 +203,7 @@ export default {
       createElement(
         'p',
         { className: 'landing__body' },
-        'With everything showing this time — what they wrote, how they sound, who they are. You choose again, and that second choice counts for more than the first. It is the difference between a face you liked and a person you would like.'
+        'With everything showing this time, what they wrote, how they sound, who they are. You choose again, and that second choice counts for more than the first. It is the difference between a face you liked and a person you would like.'
       )
     );
 

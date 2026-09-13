@@ -12,7 +12,7 @@ making architectural changes.
 
 ## Current state
 
-Phases 00–04 are complete, phase 05 is under way. **390 tests passing**, lint clean,
+Phases 00–04 are complete, phase 05 is under way. **355 tests passing**, lint clean,
 migration round-trips, frontend builds, and the whole loop — pair, unlock,
 request, reply — has been driven end to end in a browser at phone and laptop
 width.
@@ -76,7 +76,7 @@ silently makes the whole mechanic impossible for whoever is on the short side
 — twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
-pytest                       # 390 tests, no network, no models needed
+pytest                       # 355 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
 python scripts/manage.py reviewer --email you@example.com   # open the review queue
 python scripts/check_storage.py  # why uploads are or are not working
@@ -175,6 +175,59 @@ chance out of a pool of hundreds, does not happen. Half the time
 (`RE_EXPOSURE_RATE`) the anchor is drawn from this viewer's live hypotheses —
 people picked at least once whose record has not resolved. The other half keeps
 the pool from collapsing to whoever they liked first.
+
+### The shape of the app
+
+**Six destinations, one bar, on every signed-in screen.** Before this the app
+was a set of rooms with one door each — the pair view had a single footer
+link and everything else was reachable only by going back through it, so four
+of the five things you could do were invisible.
+
+**"My type" and "Keep choosing you" are different facts and must be different
+pages.** My type is who *you* keep picking: a description of your taste,
+assembled from your own choices. Keep choosing you is who picks *you*, often,
+over whoever they were shown against. One is an output of your behaviour and
+the other of everybody else's. They were one page called "your people" for
+exactly one session, and the reason that was wrong is that somebody scanning a
+single pile of faces cannot tell which of them they chose and which chose
+them — which is the only thing either list is saying.
+
+**The count in the bar is the entire notification system.** There is no email
+and no push, so a number beside Messages is how somebody learns they have one.
+That is why it lives in the bar rather than on the Messages page: a nudge you
+have to already be looking at is not a nudge. `refreshNav()` invalidates it;
+anything that changes a count calls it.
+
+**The review queue is not in the bar.** It is staff-only and would be a
+permanent empty tab for everybody else, so it sits beside Sign out and only
+for a reviewer.
+
+**There is a profile editor now.** Until this, the only way to set any of it
+was the onboarding funnel — which you go through once and can never return
+to, making a typo in a prompt answer permanent. Each section saves on its own
+rather than the page having one Save: they are unrelated edits, and failing
+all of them because one select is empty is the behaviour of a form rather than
+of a profile.
+
+### No email, anywhere
+
+**Email verification is gone, and so is the mail stack.** No SMTP, no Google,
+no verification link, no `notify`, no `mail.py`, no `send_email` job. What
+replaced the notification half is the count in the navbar; what replaced the
+verification half is nothing, and that is the part worth being honest about.
+
+**Nothing now proves somebody can read mail at the address they typed.**
+Anyone can register as anyone, and a banned account can come back for the
+price of a new address. Holding the line instead: the 18+ check, blocking,
+reporting, the review queue, rate limits. If ban evasion becomes real the
+answer is phone verification or invite codes — something that costs the
+attacker something — rather than putting the email round trip back, because a
+mailbox is free.
+
+**The seam is still there.** `users.email_verified_at` and the
+`email_verifications` table are kept: the rows are the record of who verified
+while it existed, and the column is where the gate goes back. Nothing sets it
+now, and the check that read it is gone from `profile.submit`.
 
 ### Being chosen
 
@@ -1067,7 +1120,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 390 and rising; every bug found gets a regression
+- **Tests are the contract.** 355 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.

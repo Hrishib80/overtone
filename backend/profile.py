@@ -442,12 +442,10 @@ async def _completeness(db: AsyncSession, user: User, profile: Profile) -> dict[
 async def submit_profile(
     user: User = Depends(require_member), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
-    """Finish onboarding. A complete profile on a verified address is a member —
-    there is no cap to clear and no queue to join."""
+    """Finish onboarding. A complete profile is a member — there is no cap to
+    clear, no queue to join, and no address to confirm."""
     if user.status == UserStatus.active:
         return {"status": user.status}
-    if user.email_verified_at is None:
-        raise AppError("Verify your email address first.")
 
     profile = await _get_profile(db, user.id)
     completeness = await _completeness(db, user, profile)

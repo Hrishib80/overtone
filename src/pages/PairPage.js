@@ -1,8 +1,8 @@
 import { createElement } from '../utils/dom.js';
 import { profileBody } from '../components/profile.js';
 import { reportPhoto } from '../components/safety.js';
+import { navbar, refreshNav, reviewerLink } from '../components/navbar.js';
 import api from '../services/api.js';
-import store from '../services/store.js';
 import router from '../services/router.js';
 import { toast } from '../utils/toast.js';
 
@@ -35,6 +35,9 @@ export default {
   async render() {
     const page = createElement('div', { className: 'pairs' });
 
+    const nav = navbar('/pairs');
+    reviewerLink(nav);
+
     const header = createElement('header', { className: 'pairs__head' });
 
     const mark = createElement('p', { className: 'pairs__mark' });
@@ -49,56 +52,11 @@ export default {
 
     const sub = createElement('p', { className: 'pairs__sub' }, '');
 
-    const who = createElement('p', { className: 'pairs__who' });
-    header.append(mark, heading, sub, who);
-
-    function renderSignedIn() {
-      const me = store.getState().me;
-      const email = me?.email;
-      who.replaceChildren();
-      if (!email) return;
-      who.append('signed in as ', createElement('b', {}, email), ' · ');
-
-      if (me.is_reviewer) {
-        const queue = createElement('button', { className: 'pairs__signout', type: 'button' }, 'review');
-        queue.addEventListener('click', () => router.go('/review'));
-        who.append(queue, ' · ');
-      }
-      const settings = createElement(
-        'button',
-        { className: 'pairs__signout', type: 'button' },
-        'settings'
-      );
-      settings.addEventListener('click', () => router.go('/settings'));
-      who.append(settings, ' · ');
-      const out = createElement('button', { className: 'pairs__signout', type: 'button' }, 'sign out');
-      out.addEventListener('click', () => {
-        store.signOut();
-        router.go('/');
-      });
-      who.append(out);
-    }
+    header.append(mark, heading, sub);
 
     const stage = createElement('main', { className: 'pairs__stage' });
 
-    /* The only way out of this screen, so it has to say what is behind it.
-       It used to read "my type" with an unlabelled dot, which told somebody
-       there was *something* without telling them it was worth the tap — and
-       the section that matters most, the people who keep choosing you, was
-       invisible from here entirely.
-
-       Deliberately still small and factual. This is the comparison screen;
-       "3 people love you!" over a pair of photographs would be putting a
-       thumb on the very scale the whole mechanic exists to keep level. */
-    const foot = createElement('footer', { className: 'pairs__foot' });
-    const inboxLink = createElement('button', { className: 'pairs__inbox', type: 'button' });
-    const inboxLabel = createElement('span', { className: 'pairs__inbox-label' }, 'my type');
-    const inboxNews = createElement('span', { className: 'pairs__inbox-news' });
-    inboxLink.append(inboxLabel, inboxNews);
-    inboxLink.addEventListener('click', () => router.go('/inbox'));
-    foot.append(inboxLink);
-
-    page.append(header, stage, foot);
+    page.append(nav, header, stage);
 
     let busy = false;
     /** subject id -> the element that represents them in the current pair. */
@@ -114,33 +72,6 @@ export default {
       sub.classList.remove('is-new');
       void sub.offsetWidth; // restart the animation rather than skip it
       sub.classList.add('is-new');
-    }
-
-    /** Once on mount: is there anything worth going to the inbox for, and
-        what is it? Named rather than counted, because "2" over a link tells
-        you there is something and not whether to care. */
-    async function checkInbox() {
-      try {
-        const inbox = await api.getInbox();
-        const bits = [];
-        if (inbox.requests.length) {
-          bits.push(`${inbox.requests.length} waiting on you`);
-        }
-        if (inbox.admirers.length) {
-          bits.push(`${inbox.admirers.length} keep choosing you`);
-        }
-        if (!bits.length && inbox.unlocked.length) {
-          bits.push(`${inbox.unlocked.length} open to you`);
-        }
-        inboxNews.textContent = bits.length ? ` · ${bits.join(' · ')}` : '';
-        inboxLink.setAttribute(
-          'aria-label',
-          bits.length ? `My type: ${bits.join(', ')}` : 'My type'
-        );
-      } catch {
-        // Never let the footer be the reason a page errors.
-        inboxNews.textContent = '';
-      }
     }
 
     function skeleton() {
@@ -195,7 +126,7 @@ export default {
         { className: 'btn btn--full', type: 'button' },
         connectionId ? 'Open the conversation' : 'Say something'
       );
-      write.addEventListener('click', () => router.go('/inbox'));
+      write.addEventListener('click', () => router.go('/messages'));
 
       const later = createElement('button', { className: 'btn btn--ghost btn--full', type: 'button' }, 'Later');
       later.addEventListener('click', () => {
@@ -206,7 +137,7 @@ export default {
       actions.append(write, later);
       card.append(actions);
 
-      checkInbox();
+      refreshNav();
       setStage(card);
       window.scrollTo({ top: 0 });
     }
@@ -350,10 +281,10 @@ export default {
     }
 
     page.mounted = () => {
-      renderSignedIn();
+      nav.mounted();
       load();
-      checkInbox();
     };
+    page.destroy = () => nav.destroy();
     return page;
   },
 };

@@ -194,7 +194,7 @@ async def is_unanswered_request(db: AsyncSession, connection_id: str) -> bool:
 
     Asked *before* the write, because `post_message` is what flips the status
     — afterwards there is no way to tell the reply that opened a conversation
-    from the fortieth message in it, and only the first is worth an email.
+    from the fortieth message in it.
     """
     connection = await db.get(Connection, connection_id)
     return connection is not None and connection.status == ConnectionStatus.requested

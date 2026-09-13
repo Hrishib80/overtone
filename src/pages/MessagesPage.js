@@ -1,13 +1,24 @@
 import { createElement, formatTime } from '../utils/dom.js';
-import { profileBody } from '../components/profile.js';
 import { openSheet } from '../components/sheet.js';
-import { reportPhoto, safetyButton } from '../components/safety.js';
+import { safetyButton } from '../components/safety.js';
 import { joinThread } from '../services/live.js';
+import { navbar, refreshNav, reviewerLink } from '../components/navbar.js';
 import api from '../services/api.js';
 import router from '../services/router.js';
 import { toast } from '../utils/toast.js';
 
-/* Everything the pair loop produced.
+/* Messages: requests waiting on you, live conversations, and the ones you
+   sent that nobody has answered yet.
+
+   The two *people* lists that used to live here — the ones you keep choosing,
+   and the ones who keep choosing you — are their own pages now. What is left
+   is the part that is actually correspondence, ordered by who is waiting on
+   whom: requests first, because somebody wrote and is sitting there.
+
+   There is no email and no push. The count in the navbar is the whole of the
+   nudge, which is why it is on every screen rather than only this one.
+
+   Original note, still true of the thread:
 
    Ordered by who is waiting on whom. Requests first, because somebody wrote
    and is sitting there. Then the people who opened up to you — a deck of
@@ -20,31 +31,21 @@ import { toast } from '../utils/toast.js';
    loses its place and the two heaviest things on the screen share one
    entrance. */
 
-const OPENERS = [
-  'Say something worth answering.',
-  'Ask about one specific thing up there.',
-  'One message. Then it is their turn.',
-];
-
-const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
 export default {
   async render() {
     const page = createElement('div', { className: 'inbox' });
 
+    const nav = navbar('/messages');
+    reviewerLink(nav);
+
     const head = createElement('header', { className: 'inbox__head' });
-    // The bar is full-bleed so the rule under it runs edge to edge, but its
-    // contents share the body's column — otherwise the title floats off at the
-    // far left of a wide window while everything it labels sits in the middle.
     const headInner = createElement('div', { className: 'inbox__head-inner' });
-    const back = createElement('button', { className: 'inbox__back', type: 'button' });
-    back.innerHTML = '<span aria-hidden="true">&larr;</span> Pairs';
-    back.addEventListener('click', () => router.go('/pairs'));
-    headInner.append(back, createElement('h1', { className: 'inbox__title' }, 'My type'));
+    headInner.append(createElement('h1', { className: 'inbox__title' }, 'Messages'));
     head.append(headInner);
 
     const body = createElement('main', { className: 'inbox__body' });
-    page.append(head, body);
+    page.append(nav, head, body);
 
     let busy = false;
 
@@ -263,159 +264,6 @@ export default {
       });
     }
 
-    // ---- a revealed profile, and the one message it buys ------------------
-
-    function openProfile(subject, { admirer = false } = {}) {
-      openSheet({
-        label: subject.display_name || 'Profile',
-        build: ({ close }) => {
-          const wrap = createElement('div', { className: 'revealed' });
-          const heading = createElement('div', { className: 'revealed__bar' });
-          heading.append(
-            safetyButton({
-              subject,
-              onDone: () => {
-                close();
-                refresh();
-              },
-            })
-          );
-          wrap.append(
-            heading,
-            ...profileBody(subject, {
-              onReportPhoto: (photo) => reportPhoto({ subject, photo }),
-            })
-          );
-
-          const form = createElement('form', { className: 'compose' });
-          const input = createElement('textarea', {
-            className: 'compose__input',
-            id: `opener-${subject.id}`,
-            rows: '3',
-            maxlength: '2000',
-            placeholder: pick(OPENERS),
-          });
-          const send = createElement(
-            'button',
-            { className: 'btn btn--full compose__send', type: 'submit' },
-            admirer ? 'Start talking' : 'Send one message'
-          );
-
-          // Writing to somebody who already chose you is not a request —
-          // they declared first, so answering opens the conversation outright
-          // and the copy has to say the true thing rather than the cautious
-          // one, or the button under-sells what pressing it does.
-          form.append(
-            createElement(
-              'p',
-              { className: 'compose__note' },
-              admirer
-                ? 'They already chose you, so this opens the conversation straight away.'
-                : 'You get one message. They reply, and then you can talk properly.'
-            ),
-            input,
-            send
-          );
-
-          form.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const text = input.value.trim();
-            if (!text || busy) return;
-            busy = true;
-            send.disabled = true;
-            send.textContent = 'Sending…';
-            try {
-              await api.sendRequest(subject.id, text);
-              close();
-              toast('Sent.');
-              await refresh();
-            } catch (error) {
-              toast(error.message, { error: true });
-              send.disabled = false;
-              send.textContent = 'Send one message';
-            } finally {
-              busy = false;
-            }
-          });
-
-          wrap.append(form);
-          return wrap;
-        },
-      });
-    }
-
-    // ---- groups ----------------------------------------------------------
-
-    function requestCard(entry) {
-      const card = createElement('article', { className: 'request' });
-
-      const top = createElement('div', { className: 'request__top' });
-      top.append(
-        avatar(entry.peer),
-        createElement('div', { className: 'request__who' }, [
-          createElement('span', { className: 'request__name' }, entry.peer.display_name || 'Unnamed'),
-          createElement(
-            'span',
-            { className: 'request__when' },
-            entry.last_message?.sent_at ? formatTime(entry.last_message.sent_at) : ''
-          ),
-        ])
-      );
-
-      card.append(top);
-      if (entry.last_message) {
-        card.append(
-          createElement('blockquote', { className: 'request__quote' }, entry.last_message.text)
-        );
-      }
-
-      const actions = createElement('div', { className: 'request__actions' });
-      const reply = createElement('button', { className: 'btn request__reply', type: 'button' }, 'Reply');
-      reply.addEventListener('click', () => openThread(entry));
-
-      const pass = createElement(
-        'button',
-        { className: 'btn btn--ghost request__pass', type: 'button' },
-        'Not now'
-      );
-      pass.addEventListener('click', async () => {
-        pass.disabled = true;
-        try {
-          await api.declineRequest(entry.id);
-          card.classList.add('is-leaving');
-          card.addEventListener('animationend', () => refresh(), { once: true });
-        } catch (error) {
-          toast(error.message, { error: true });
-          pass.disabled = false;
-        }
-      });
-
-      actions.append(reply, pass);
-      card.append(actions);
-      return card;
-    }
-
-    function deckCard(subject, { admirer = false } = {}) {
-      const card = createElement('button', { className: 'card', type: 'button' });
-
-      const photo = subject.photos?.[0];
-      if (photo) {
-        card.append(
-          createElement('img', { className: 'card__photo', src: photo.url, alt: '', loading: 'lazy' })
-        );
-      } else {
-        card.append(createElement('div', { className: 'card__photo card__photo--blank' }));
-      }
-
-      const caption = createElement('div', { className: 'card__caption' });
-      caption.append(createElement('span', { className: 'card__name' }, subject.display_name || 'Unnamed'));
-      if (subject.age) caption.append(createElement('span', { className: 'card__age' }, `${subject.age}`));
-
-      card.append(createElement('div', { className: 'card__veil' }), caption);
-      card.addEventListener('click', () => openProfile(subject, { admirer }));
-      return card;
-    }
-
     function threadRow(entry, { muted = false } = {}) {
       const row = createElement('button', {
         className: `row${muted ? ' row--muted' : ''}`,
@@ -446,41 +294,15 @@ export default {
       return row;
     }
 
-    /* The share, in words, or nothing.
-
-       Nothing is the important case: below a floor a percentage is noise
-       wearing a percent sign — one keen person out of three is "33%", which
-       reads like it means a lot and means nothing. The server decides where
-       that floor is and sends `share: null` below it, so this only has to
-       know not to invent a number. */
-    function reachNote(reach, shown) {
-      if (!reach || !reach.admirers) return null;
-
-      const head =
-        reach.share === null
-          ? `${reach.admirers} ${reach.admirers === 1 ? 'person keeps' : 'people keep'} choosing you. Too few people have compared you to put a percentage on it yet.`
-          : `${reach.share}% of the ${reach.seen_by} people who have compared you keep choosing you.`;
-
-      // The badge counts the cards below it and the sentence counts everyone,
-      // so when somebody is already in a conversation the two disagree — and
-      // a number that disagrees with the thing under it reads as a bug rather
-      // than as a distinction. Say where the difference went.
-      const talking = reach.admirers - shown;
-      if (talking > 0) {
-        return `${head} You're already talking to ${talking} of them.`;
-      }
-      return head;
-    }
-
     function emptyState() {
       const card = createElement('div', { className: 'blank' });
       card.append(
         createElement('div', { className: 'blank__blot' }),
-        createElement('h2', {}, 'Nothing here yet'),
+        createElement('h2', {}, 'No messages yet'),
         createElement(
           'p',
           { className: 'muted' },
-          'Keep choosing. Pick the same person often enough and their profile opens up here.'
+          'Conversations start from My type or from Keep choosing you — write to somebody there and it lands here.'
         )
       );
       const go = createElement('button', { className: 'btn', type: 'button' }, 'Back to pairs');
@@ -519,27 +341,6 @@ export default {
         groups.push(wrap);
       }
 
-      if (inbox.admirers.length) {
-        const wrap = section('They keep choosing you', reachNote(inbox.reach, inbox.admirers.length), {
-          count: inbox.admirers.length,
-        });
-        const deck = createElement('div', { className: 'deck' });
-        for (const subject of inbox.admirers) deck.append(deckCard(subject, { admirer: true }));
-        wrap.append(deck);
-        groups.push(wrap);
-      }
-
-      if (inbox.unlocked.length) {
-        const wrap = section(
-          'Open to you',
-          'You picked them enough times that we stopped guessing. They have not been told.'
-        );
-        const deck = createElement('div', { className: 'deck' });
-        for (const subject of inbox.unlocked) deck.append(deckCard(subject));
-        wrap.append(deck);
-        groups.push(wrap);
-      }
-
       if (inbox.conversations.length) {
         const wrap = section('Conversations');
         const list = createElement('div', { className: 'rows' });
@@ -556,6 +357,7 @@ export default {
         groups.push(wrap);
       }
 
+      refreshNav();
       body.replaceChildren(...(groups.length ? stagger(groups) : [emptyState()]));
     }
 
@@ -564,7 +366,11 @@ export default {
       await refresh();
     }
 
-    page.mounted = () => load();
+    page.mounted = () => {
+      nav.mounted();
+      load();
+    };
+    page.destroy = () => nav.destroy();
     return page;
   },
 };

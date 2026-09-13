@@ -1,4 +1,5 @@
 import { createElement } from '../utils/dom.js';
+import { navbar } from '../components/navbar.js';
 import api from '../services/api.js';
 import router from '../services/router.js';
 import { toast } from '../utils/toast.js';
@@ -59,17 +60,16 @@ export default {
   async render() {
     const page = createElement('div', { className: 'review' });
 
+    const nav = navbar('/review');
+
     const head = createElement('header', { className: 'review__head' });
     const headInner = createElement('div', { className: 'review__head-inner' });
-    const back = createElement('button', { className: 'review__back', type: 'button' });
-    back.innerHTML = '<span aria-hidden="true">&larr;</span> Pairs';
-    back.addEventListener('click', () => router.go('/pairs'));
     const title = createElement('h1', { className: 'review__title' }, 'Review');
-    headInner.append(back, title);
+    headInner.append(title);
     head.append(headInner);
 
     const body = createElement('main', { className: 'review__body' });
-    page.append(head, body);
+    page.append(nav, head, body);
 
     // ---- the queue -------------------------------------------------------
 
@@ -392,7 +392,11 @@ export default {
       window.scrollTo({ top: 0 });
     }
 
-    page.mounted = () => showQueue();
+    page.mounted = () => {
+      nav.mounted();
+      showQueue();
+    };
+    page.destroy = () => nav.destroy();
     return page;
   },
 };

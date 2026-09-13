@@ -197,9 +197,15 @@ async def register(
 
 
 async def register_and_verify(client: AsyncClient, email: str = f"aditi@{TEST_DOMAIN}", **kw) -> dict:
+    """Registering *is* the whole of it now — there is no verification step.
+
+    The name is kept because roughly a hundred call sites use it and renaming
+    them would bury the change that matters in a diff full of renames. It
+    returns an account that is through the door, which is what every caller
+    actually wants from it.
+    """
     account = await register(client, email, **kw)
-    verified = await client.post("/api/auth/verify-email", json={"token": account["verification_token"]})
-    assert verified.status_code == 200, verified.text
+    assert account["status"] == "onboarding", account
     return account
 
 
