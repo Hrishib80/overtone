@@ -577,14 +577,10 @@ export default {
         }
 
         if (index === 2) {
-          if (!uploaded.length) {
-            toast('Add at least one photo to carry on.', { error: true });
-            return;
-          }
-          if (!(await photosStillValid())) {
-            toast('None of those passed. Try a clear photo of just your face.', { error: true });
-            return;
-          }
+          // One check, against what the server actually has. The old local
+          // counter said "you uploaded something" and could not know whether
+          // the face gate had since thrown it out.
+          if (!(await photosStillValid())) return;
           show(3);
           return;
         }
