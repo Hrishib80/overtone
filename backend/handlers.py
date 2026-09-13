@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend import ml, storage
+from backend import mail, ml, storage
 from backend.database import (
     MediaAsset,
     MediaKind,
@@ -192,8 +192,20 @@ async def refresh_text(db: AsyncSession, payload: dict[str, Any]) -> None:
     log.info("text_refreshed", user_id=user_id, sources=len(parts))
 
 
+async def send_email(db: AsyncSession, payload: dict[str, Any]) -> None:
+    """Deliver one message. Exceptions escape so the queue retries with backoff.
+
+    The message is built at enqueue time and carried whole in the payload, not
+    rebuilt here from a user id: by the time this runs the account may have
+    been deleted, and a verification link that cannot be regenerated is better
+    than one that quietly stops being sent.
+    """
+    await mail.send(mail.Message(to=payload["to"], subject=payload["subject"], text=payload["text"]))
+
+
 HANDLERS = {
     "process_photo": process_photo,
     "process_voice": process_voice,
     "refresh_text": refresh_text,
+    "send_email": send_email,
 }

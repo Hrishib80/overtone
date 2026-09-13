@@ -244,6 +244,37 @@ deep-navy `--sky`, are redefined for dark mode.
 own `interested_in` choice reflected back; it says nothing about either
 subject, so round 1's photo-only rule is untouched.
 
+### The campus gate
+
+**The domain check is not the gate. The verification link is.** Refusing
+anything that is not `@campus.edu` proves only that the person knows what the
+campus domain is — anyone can type `someone@campus.edu`. What makes an account
+mean "a student" is that a link arrived in a mailbox at that domain and
+somebody opened it. This is the single identity anchor the whole product rests
+on; everything else (caps, ban evasion costing something, a bounded
+population) is downstream of it.
+
+So: **the token is returned in the API response only when nothing was actually
+delivered** (`mail.delivers()` is false). Handing it back with a real provider
+configured would undo the entire point of sending it. And **production refuses
+to start on the console mailer** — in that mode every signup mints a token that
+reaches nobody, so the gate silently admits no one at all.
+
+**SMTP, not one vendor's HTTP API.** It is the single interface SES, Postmark,
+Resend, Mailgun, Google Workspace and a university's own relay all speak, and
+a campus launch is exactly where the relay you are eventually allowed to use is
+not the one you planned for.
+
+**Delivery runs through the job queue**, so a provider that is briefly down
+costs a retry rather than an account nobody can ever verify. The message is
+built at enqueue time and carried whole in the payload — by send time the
+account may be gone, and a link that cannot be regenerated beats one that
+quietly stops being sent.
+
+**Resend answers identically for an address that does not exist.** On one
+campus, "does this person have an Overtone account" is a question about
+somebody's private life.
+
 ### Safety
 
 **A block is stored one way and read both ways.** Who blocked whom is worth
@@ -524,8 +555,14 @@ an action or introduces content; nothing here loops or decorates.
 - Load test, runbook, closed beta, campus unlock.
 
 ### Known gaps in what's built
-- **No mail sender.** Verification tokens are returned in the response outside
-  production and only logged in it. Needs a real provider before launch.
+- **Nothing proves a person is still enrolled.** The gate is a mailbox at the
+  campus domain, checked once at signup. Alumni addresses often live on, and
+  nothing re-checks later. A periodic re-verification is the obvious answer and
+  does not exist.
+- **Mail is unconfigured out of the box.** `MAIL_PROVIDER=console` is the
+  default and delivers nothing; set `smtp` and the SMTP_* variables before
+  deploying. The app refuses to start in production without it, so this fails
+  loudly rather than silently.
 - **Queue refill is on-demand**, not a batch worker job. Fine at campus scale;
   `generate_one_pair` is the building block when it isn't.
 - **Round-2 pairings only surface after 48–72h** in real use — pull `due_at`

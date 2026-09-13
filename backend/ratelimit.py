@@ -84,8 +84,13 @@ LOGIN_PER_ACCOUNT = Limit("login_account", 10, timedelta(minutes=15))
 LOGIN_PER_ADDRESS = Limit("login_address", 120, timedelta(minutes=15))
 REGISTER = Limit("register", 120, timedelta(hours=1))
 
+# Tight per address, because each one sends a real email to somebody who did
+# not ask for it, and loose per network for the campus-NAT reason above.
+RESEND_VERIFICATION = Limit("resend_verification", 5, timedelta(hours=1))
+
 ALL_LIMITS = (
     SEND_REQUEST,
+    RESEND_VERIFICATION,
     REPORT,
     UPLOAD_TICKET,
     LOGIN_PER_ACCOUNT,

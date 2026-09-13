@@ -81,9 +81,8 @@ async def test_confirm_queues_work(client, verified, fake_storage, db_sessionmak
     assert response.json()["status"] == "uploaded"
 
     async with db_sessionmaker() as db:
-        queued = (await db.execute(select(jobs.Job))).scalars().all()
+        queued = (await db.execute(select(jobs.Job).where(jobs.Job.kind == "process_photo"))).scalars().all()
     assert len(queued) == 1
-    assert queued[0].kind == "process_photo"
 
 
 @pytest.mark.asyncio
@@ -98,7 +97,10 @@ async def test_confirming_twice_is_harmless(client, verified, fake_storage, db_s
         assert response.status_code == 200
 
     async with db_sessionmaker() as db:
-        assert len((await db.execute(select(jobs.Job))).scalars().all()) == 1
+        media_jobs = (
+            (await db.execute(select(jobs.Job).where(jobs.Job.kind == "process_photo"))).scalars().all()
+        )
+    assert len(media_jobs) == 1
 
 
 @pytest.mark.asyncio
@@ -107,7 +109,8 @@ async def test_photo_is_gated_and_embedded(client, verified, fake_storage, db_se
     fake_storage[body["object_key"]] = PNG
     await client.post(f"/api/media/{body['asset_id']}/confirm", headers=verified["headers"], json={})
 
-    assert await run_jobs(db_sessionmaker) == 1
+    # One photo job, plus the verification email queued at registration.
+    assert await run_jobs(db_sessionmaker) == 2
 
     async with db_sessionmaker() as db:
         asset = await db.get(MediaAsset, body["asset_id"])

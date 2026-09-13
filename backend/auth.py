@@ -8,11 +8,11 @@ from fastapi import APIRouter, Depends, Header, Request
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend import access
+from backend import access, jobs, mail
 from backend.config import settings
 from backend.database import (
     EmailVerification,
@@ -24,7 +24,14 @@ from backend.database import (
 )
 from backend.errors import AppError, Conflict, NotAuthenticated, NotFound
 from backend.logging_config import get_logger
-from backend.ratelimit import LOGIN_PER_ACCOUNT, LOGIN_PER_ADDRESS, REGISTER, client_key, consume
+from backend.ratelimit import (
+    LOGIN_PER_ACCOUNT,
+    LOGIN_PER_ADDRESS,
+    REGISTER,
+    RESEND_VERIFICATION,
+    client_key,
+    consume,
+)
 
 log = get_logger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -134,6 +141,7 @@ async def register(
             expires_at=utcnow() + VERIFICATION_TTL,
         )
     )
+    await _queue_verification_email(db, user, token)
     await db.commit()
     await db.refresh(user)
 
@@ -145,9 +153,74 @@ async def register(
         "status": user.status,
         "scope": {"id": scope.id, "name": scope.name, "slug": scope.slug},
     }
-    # There is no mail sender yet. Outside production the token is returned so
-    # the flow is usable; in production it is only ever logged and emailed.
-    if not settings.is_production:
+    # Returned only when nothing was actually delivered. With a real provider
+    # configured, handing the token back would undo the entire point of
+    # sending it: the link is what proves the person reads mail at that
+    # address, and a token in the response proves only that they typed it.
+    if not mail.delivers():
+        body["verification_token"] = token
+    return body
+
+
+async def _queue_verification_email(db: AsyncSession, user: User, token: str) -> None:
+    """Enqueue rather than send inline. Registration must not fail because a
+    mail provider is slow, and a link that failed to send once should be
+    retried rather than lost."""
+    message = mail.verification_message(to=user.email, token=token, display_name=user.display_name)
+    await jobs.enqueue(
+        db,
+        jobs.JobKind.send_email,
+        {"to": message.to, "subject": message.subject, "text": message.text},
+        subject_id=user.id,
+    )
+
+
+class ResendRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    email: EmailStr
+
+
+@router.post("/resend-verification")
+async def resend_verification(
+    req: ResendRequest, request: Request, db: AsyncSession = Depends(get_db)
+) -> dict[str, object]:
+    """Send the link again.
+
+    Always answers the same way, whether or not the address exists or is
+    already verified. Anything else turns this into a way to ask "does this
+    person have an Overtone account", which on a single campus is a question
+    about somebody's private life.
+    """
+    await consume(db, RESEND_VERIFICATION, f"email:{req.email.strip().lower()}")
+    await consume(db, RESEND_VERIFICATION, client_key(request))
+
+    body: dict[str, object] = {"status": "sent"}
+    user = (await db.execute(select(User).where(User.email == req.email.strip().lower()))).scalars().first()
+
+    if user is None or user.email_verified_at is not None:
+        return body
+
+    # Old links stop working, so a forwarded one cannot be used later.
+    await db.execute(
+        update(EmailVerification)
+        .where(EmailVerification.user_id == user.id)
+        .where(EmailVerification.used_at.is_(None))
+        .values(used_at=utcnow())
+    )
+
+    token, token_hash = access.new_verification_token()
+    db.add(
+        EmailVerification(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=utcnow() + VERIFICATION_TTL,
+        )
+    )
+    await _queue_verification_email(db, user, token)
+    await db.commit()
+
+    if not mail.delivers():
         body["verification_token"] = token
     return body
 

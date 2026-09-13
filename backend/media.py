@@ -218,13 +218,25 @@ async def delete_media(
 async def processing_status(
     user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
-    """What the worker still owes this user. Lets onboarding show progress
-    instead of a spinner with no end."""
+    """What the worker still owes this user *on their media*. Lets onboarding
+    show progress instead of a spinner with no end.
+
+    Filtered by kind, not just by subject: this account also has jobs queued
+    against it that have nothing to do with a photo — a verification email, to
+    begin with — and counting those would leave onboarding reporting that the
+    pictures are still processing until an unrelated message had been sent.
+    """
+    media_kinds = [
+        jobs.JobKind.process_photo,
+        jobs.JobKind.process_voice,
+        jobs.JobKind.refresh_text,
+    ]
     pending = (
         (
             await db.execute(
                 select(jobs.Job)
                 .where(jobs.Job.subject_id == user.id)
+                .where(jobs.Job.kind.in_(media_kinds))
                 .where(jobs.Job.status.in_([jobs.JobStatus.queued, jobs.JobStatus.running]))
             )
         )

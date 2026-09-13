@@ -68,6 +68,23 @@ class Settings(BaseSettings):
     # to parse. Split in the `allowed_origins` property instead.
     allowed_origins_raw: str = Field(default="*", alias="ALLOWED_ORIGINS")
 
+    # ---- Mail -------------------------------------------------------------
+    # The campus gate rests entirely on a verification link arriving, so
+    # `console` is a development mode only — app startup refuses it in
+    # production. See backend/mail.py.
+    mail_provider: Literal["console", "smtp"] = "console"
+    mail_from: str = "Overtone <no-reply@overtone.app>"
+    # Where the verification link points. Not derived from the request, because
+    # a link built from a Host header is a link an attacker can aim elsewhere.
+    public_web_url: str = "http://localhost:5173"
+
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_use_starttls: bool = True
+    smtp_use_tls: bool = False  # implicit TLS, for port 465
+
     log_level: str = "INFO"
     log_json: bool | None = None
     sentry_dsn: str = ""
