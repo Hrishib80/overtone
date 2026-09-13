@@ -4,11 +4,15 @@ import api, { ApiError } from './api.js';
    ask for a signed URL, PUT straight to storage, then confirm so the
    server can verify the upload landed and queue the work. */
 
-export async function uploadFile(file, { kind, durationMs = null, onProgress } = {}) {
+export async function uploadFile(file, { kind, durationMs = null, replaces = null, onProgress } = {}) {
+  // `replaces` travels on both calls: the first so the photo cap lets a
+  // swap through when all the slots are full, the second so the new photo
+  // takes the old one's position and the old one goes in the same step.
   const ticket = await api.request('POST', '/api/media/upload-url', {
     kind,
     content_type: file.type,
     byte_size: file.size,
+    replaces,
   });
 
   onProgress?.('uploading');
@@ -30,8 +34,9 @@ export async function uploadFile(file, { kind, durationMs = null, onProgress } =
 
   onProgress?.('confirming');
 
-  const confirmed = await api.request(`POST`, `/api/media/${ticket.asset_id}/confirm`, {
+  const confirmed = await api.request('POST', `/api/media/${ticket.asset_id}/confirm`, {
     duration_ms: durationMs,
+    replaces,
   });
 
   return { assetId: ticket.asset_id, ...confirmed };

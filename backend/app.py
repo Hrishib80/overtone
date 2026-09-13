@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from backend import mail
+from backend import mail, storage
 from backend.auth import router as auth_router
 from backend.config import settings
 from backend.database import engine
@@ -51,12 +51,14 @@ async def lifespan(app: FastAPI):
     # up when the first person tries to sign up is one found too late. In
     # production a console mailer means nobody can ever verify an address.
     mail.check_configuration()
+    storage.check_configuration()
 
     log.info(
         "app_started",
         environment=settings.environment,
         mail_provider=settings.mail_provider,
         mail_delivers=mail.delivers(),
+        storage_provider=settings.storage_provider,
     )
     yield
     if engine is not None:

@@ -429,3 +429,69 @@
   font-size: var(--t--1);
   line-height: 1.35;
 }
+
+/* ---- Photo actions ------------------------------------------------------ */
+
+/* The green "accepted" border went with the old fire-and-forget grid, where a
+   tile appearing at all meant the upload had worked. Now the grid only ever
+   shows photos the server has, so every tile is accepted and a status colour
+   on all of them says nothing. */
+.photo-tile--ok {
+  border-color: var(--rule);
+}
+
+.photo-tile__badge {
+  position: absolute;
+  top: var(--s-2);
+  left: var(--s-2);
+  padding: 3px var(--s-2);
+  border-radius: 999px;
+  background: var(--blue);
+  color: var(--on-accent);
+  font-size: 0.66rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+/* Sit over the foot of the photo rather than under it: the tiles are a fixed
+   aspect ratio and a row of buttons beneath each one would push the grid into
+   a second screen on a phone. */
+.photo-tile__actions {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  display: flex;
+  gap: 1px;
+  background: rgba(11, 20, 32, 0.28);
+}
+
+.photo-tile__action {
+  flex: 1;
+  min-height: 34px;
+  border: 0;
+  background: rgba(11, 20, 32, 0.82);
+  color: #fff;
+  font: inherit;
+  font-size: var(--t--1);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.photo-tile__action:hover:not(:disabled) {
+  background: rgba(11, 20, 32, 0.95);
+}
+
+.photo-tile__action--remove:hover:not(:disabled) {
+  background: var(--red);
+}
+
+.photo-tile__action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.photo-note {
+  margin-top: var(--s-3);
+  color: var(--muted);
+  font-size: var(--t--1);
+}

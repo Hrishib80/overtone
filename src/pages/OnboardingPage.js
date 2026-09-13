@@ -202,13 +202,19 @@ export default {
     step2.append(intentions.wrap, relType.wrap, pair, languages.wrap, religion.wrap, vices);
 
     // ---- step 3: photos --------------------------------------------------
+    /* Server state, not local state. The old version appended a tile per file
+       and never read anything back, so the grid disagreed with reality the
+       moment anything failed, and coming back to this step showed nothing you
+       had already uploaded. */
+    const MAX_PHOTOS = 3;
+
     const stepPhotos = createElement('section', { className: 'stack', hidden: 'true' });
     stepPhotos.append(
-      createElement('h2', {}, 'Your photo'),
+      createElement('h2', {}, 'Your photos'),
       createElement(
         'p',
         { className: 'ob__lede' },
-        'One clear photo of your face, on its own. It is the only photo people see while choosing, so it stays the same every time.'
+        'One clear photo of your face on its own, and up to two more if you want. The first is the only one people see while choosing, so it stays the same every time.'
       )
     );
 
@@ -220,44 +226,137 @@ export default {
       id: 'photo-input',
       multiple: 'true',
     });
+    const photoNote = createElement('p', { className: 'photo-note' });
+    stepPhotos.append(photoGrid, photoNote, photoInput);
 
-    const addTile = createElement('button', { className: 'photo-add', type: 'button' });
-    addTile.append(
-      createElement('span', { className: 'photo-add__plus' }, '+'),
-      createElement('span', { className: 'photo-add__label' }, 'Add photo')
-    );
-    addTile.addEventListener('click', () => photoInput.click());
-    photoGrid.append(addTile);
-    stepPhotos.append(photoGrid, photoInput);
+    let photos = [];
+    // Set while a replacement is in flight, so the file picker knows whether
+    // the next file is a new photo or a swap for an existing one.
+    let replacing = null;
 
-    const uploaded = [];
+    async function loadPhotos() {
+      try {
+        const { media } = await api.request('GET', '/api/media');
+        photos = media
+          .filter((m) => m.kind === 'photo' && m.status !== 'rejected')
+          .sort((a, b) => Number(b.is_primary) - Number(a.is_primary));
+      } catch {
+        photos = [];
+      }
+      renderPhotos();
+    }
+
+    function tileFor(photo, index) {
+      const tile = createElement('div', { className: 'photo-tile photo-tile--ok' });
+      if (photo.url) {
+        tile.append(createElement('img', { src: photo.url, alt: '' }));
+      }
+
+      if (index === 0) {
+        tile.append(createElement('span', { className: 'photo-tile__badge' }, 'Shown in pairs'));
+      }
+
+      const actions = createElement('div', { className: 'photo-tile__actions' });
+
+      const replace = createElement(
+        'button',
+        { className: 'photo-tile__action', type: 'button' },
+        'Replace'
+      );
+      replace.addEventListener('click', () => {
+        replacing = photo.id;
+        photoInput.removeAttribute('multiple');
+        photoInput.click();
+      });
+      actions.append(replace);
+
+      // The first photo is what the pair view shows. It can be swapped, but
+      // removing it would leave nothing to be compared on, so it has no
+      // Remove — the server refuses it too, and this is the half that stops
+      // somebody being told off for trying.
+      if (index > 0) {
+        const remove = createElement(
+          'button',
+          { className: 'photo-tile__action photo-tile__action--remove', type: 'button' },
+          'Remove'
+        );
+        remove.addEventListener('click', async () => {
+          remove.disabled = true;
+          try {
+            await api.request('DELETE', `/api/media/${photo.id}`);
+          } catch (error) {
+            toast(error.message, { error: true });
+          }
+          await loadPhotos();
+        });
+        actions.append(remove);
+      }
+
+      tile.append(actions);
+      return tile;
+    }
+
+    function renderPhotos() {
+      photoGrid.replaceChildren(...photos.map(tileFor));
+
+      if (photos.length < MAX_PHOTOS) {
+        const addTile = createElement('button', { className: 'photo-add', type: 'button' });
+        addTile.append(
+          createElement('span', { className: 'photo-add__plus' }, '+'),
+          createElement(
+            'span',
+            { className: 'photo-add__label' },
+            photos.length === 0 ? 'Add a photo' : 'Add another'
+          )
+        );
+        addTile.addEventListener('click', () => {
+          replacing = null;
+          photoInput.setAttribute('multiple', 'true');
+          photoInput.click();
+        });
+        photoGrid.append(addTile);
+      }
+
+      photoNote.textContent =
+        photos.length === 0
+          ? 'At least one photo is needed.'
+          : `${photos.length} of ${MAX_PHOTOS}. The first one is the one people compare.`;
+    }
 
     photoInput.addEventListener('change', async () => {
       const files = [...photoInput.files];
       photoInput.value = '';
+      const swapping = replacing;
+      replacing = null;
 
-      for (const file of files) {
-        const tile = createElement('div', { className: 'photo-tile photo-tile--busy' });
-        tile.append(createElement('img', { src: URL.createObjectURL(file), alt: '' }));
-        const note = createElement('span', { className: 'photo-tile__note' }, 'Uploading...');
-        tile.append(note);
-        photoGrid.insertBefore(tile, addTile);
+      // Never start more uploads than there are slots; the server refuses the
+      // extras anyway and each refusal is a toast the person did not need.
+      const room = swapping ? 1 : Math.max(0, MAX_PHOTOS - photos.length);
+      const chosen = files.slice(0, room);
+      if (files.length > chosen.length) {
+        toast(`You can have ${MAX_PHOTOS} photos.`);
+      }
+
+      for (const file of chosen) {
+        const pending = createElement('div', { className: 'photo-tile photo-tile--busy' });
+        pending.append(createElement('img', { src: URL.createObjectURL(file), alt: '' }));
+        const note = createElement('span', { className: 'photo-tile__note' }, 'Uploading…');
+        pending.append(note);
+        photoGrid.append(pending);
 
         try {
-          const result = await uploadFile(file, {
+          await uploadFile(file, {
             kind: 'photo',
+            replaces: swapping,
             onProgress: (phase) => {
-              if (phase === 'confirming') note.textContent = 'Checking...';
+              if (phase === 'confirming') note.textContent = 'Checking…';
             },
           });
-          tile.className = 'photo-tile photo-tile--ok';
-          note.remove();
-          uploaded.push(result.assetId);
         } catch (error) {
-          tile.className = 'photo-tile photo-tile--rejected';
-          note.textContent = error.message;
           toast(error.message, { error: true });
         }
+        pending.remove();
+        await loadPhotos();
       }
     });
 
@@ -267,11 +366,16 @@ export default {
     async function photosStillValid() {
       try {
         const { media } = await api.request('GET', '/api/media');
-        const photos = media.filter((m) => m.kind === 'photo');
-        for (const photo of photos.filter((m) => m.status === 'rejected')) {
+        const all = media.filter((m) => m.kind === 'photo');
+        for (const photo of all.filter((m) => m.status === 'rejected')) {
           toast(gateMessage(photo.gate_reason), { error: true });
         }
-        return photos.some((m) => m.status !== 'rejected');
+        const usable = all.filter((m) => m.status !== 'rejected');
+        if (!usable.length) {
+          toast('Add at least one photo to carry on.', { error: true });
+          return false;
+        }
+        return true;
       } catch {
         return true;
       }
@@ -420,6 +524,8 @@ export default {
       current.classList.remove('step-in', 'step-in--back');
       void current.offsetWidth; // restart rather than skip
       current.classList.add(backwards ? 'step-in--back' : 'step-in');
+
+      if (steps[index] === stepPhotos) loadPhotos();
 
       stepLabel.textContent = `Step ${index + 1} of ${steps.length}`;
       bar.style.width = `${((index + 1) / steps.length) * 100}%`;

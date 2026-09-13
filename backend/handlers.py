@@ -65,10 +65,16 @@ async def process_photo(db: AsyncSession, payload: dict[str, Any]) -> None:
     asset.status = MediaStatus.processed
     asset.gate_reason = None
 
-    # The primary photo is the earliest *uploaded* one that passes, not
-    # whichever job happened to run first — two uploads a moment apart would
-    # otherwise pick arbitrarily, and the pair view needs one stable photo per
-    # person or the rating measures photo choice instead of the person.
+    # The primary photo is the one in the first *slot* that passes, not
+    # whichever job happened to finish first — two uploads a moment apart
+    # would otherwise pick arbitrarily, and the pair view needs one stable
+    # photo per person or the rating measures photo choice instead of the
+    # person.
+    #
+    # Slot order rather than upload time, because replacing the first photo
+    # has to make the new one first. The replacement inherits the old
+    # `display_order` at confirm time, so it sorts into the same position
+    # instead of landing at the end.
     processed = (
         (
             await db.execute(
@@ -76,7 +82,7 @@ async def process_photo(db: AsyncSession, payload: dict[str, Any]) -> None:
                 .where(MediaAsset.user_id == asset.user_id)
                 .where(MediaAsset.kind == MediaKind.photo)
                 .where(MediaAsset.status == MediaStatus.processed)
-                .order_by(MediaAsset.created_at, MediaAsset.id)
+                .order_by(MediaAsset.display_order, MediaAsset.created_at, MediaAsset.id)
             )
         )
         .scalars()

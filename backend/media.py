@@ -14,9 +14,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend import jobs, storage
@@ -29,14 +29,18 @@ from backend.database import (
     User,
     get_db,
 )
-from backend.errors import AppError, NotFound
+from backend.errors import AppError, NotAuthorized, NotFound
 from backend.logging_config import get_logger
 from backend.ratelimit import UPLOAD_TICKET, consume
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/api/media", tags=["media"])
 
-MAX_PHOTOS = 6
+# Three, and the first one is special. A profile is one person's face, not a
+# gallery: more slots mean more time spent choosing and a weaker round-1
+# signal, because the pair view only ever shows the primary.
+MAX_PHOTOS = 3
+MIN_PHOTOS = 1
 
 
 class UploadRequest(BaseModel):
@@ -45,12 +49,40 @@ class UploadRequest(BaseModel):
     kind: MediaKind
     content_type: str = Field(max_length=100)
     byte_size: int = Field(gt=0)
+    # Declared here as well as at confirm, and only so the cap lets the ticket
+    # through. Without it somebody sitting on their third photo cannot get a
+    # ticket to swap one out, and "replace" becomes impossible at exactly the
+    # point it is the only thing left to do.
+    replaces: str | None = None
 
 
 class ConfirmRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
     duration_ms: int | None = Field(default=None, ge=0)
+    # Swap this photo into another one's slot and drop the old one, in one
+    # step. Two steps would either dip below the one-photo minimum (delete
+    # first) or leave a stranger's fourth photo wedged over the cap (upload
+    # first and then fail to delete).
+    replaces: str | None = None
+
+
+# A ticket that was issued and never uploaded to is not a photo. Counting
+# one would let an abandoned ticket eat a slot, and would let the
+# last-photo guard pass while the only real photo was being deleted.
+REAL_PHOTO_STATES = (MediaStatus.uploaded, MediaStatus.processed)
+
+
+async def _photo_count(db: AsyncSession, user_id: str) -> int:
+    return int(
+        await db.scalar(
+            select(func.count(MediaAsset.id))
+            .where(MediaAsset.user_id == user_id)
+            .where(MediaAsset.kind == MediaKind.photo)
+            .where(MediaAsset.status.in_(REAL_PHOTO_STATES))
+        )
+        or 0
+    )
 
 
 def _limit_for(kind: MediaKind) -> tuple[dict[str, str], int]:
@@ -79,20 +111,22 @@ async def create_upload_url(
         raise AppError(f"That file is too large. The limit is {max_bytes // (1024 * 1024)} MB.")
 
     if req.kind == MediaKind.photo:
-        existing = (
-            (
-                await db.execute(
-                    select(MediaAsset)
-                    .where(MediaAsset.user_id == user.id)
-                    .where(MediaAsset.kind == MediaKind.photo)
-                    .where(MediaAsset.status != MediaStatus.rejected)
-                )
+        # A replacement is not an addition, so it does not have to fit under
+        # the cap — the old photo goes at confirm, and the count comes out the
+        # same. Verified here rather than trusted, or `replaces` would be a
+        # way to ask for a fourth slot.
+        held = await _photo_count(db, user.id)
+        if req.replaces:
+            target = await db.get(MediaAsset, req.replaces)
+            if target is None or target.user_id != user.id or target.kind != MediaKind.photo:
+                raise NotFound("There's no photo to replace.")
+            held -= 1
+
+        if held >= MAX_PHOTOS:
+            raise AppError(
+                f"You can have {MAX_PHOTOS} photos. Replace one instead.",
+                limit=MAX_PHOTOS,
             )
-            .scalars()
-            .all()
-        )
-        if len(existing) >= MAX_PHOTOS:
-            raise AppError(f"You can have at most {MAX_PHOTOS} photos.")
 
     signed = await storage.create_signed_upload(user.id, str(req.kind), req.content_type)
 
@@ -116,6 +150,36 @@ async def create_upload_url(
         "object_key": signed.object_key,
         "expires_in": settings.upload_url_ttl_seconds,
     }
+
+
+@router.put("/local/{key:path}", status_code=204)
+async def receive_local_upload(
+    key: str,
+    request: Request,
+    token: str = Query(default=""),
+) -> Response:
+    """Receive bytes for the local storage provider.
+
+    Deliberately unauthenticated, and safe because the signed ticket in the
+    query string is the authorisation: only this server could have minted it,
+    it names one exact key, and it expires. That mirrors how a Supabase signed
+    URL works, so the browser code is the same either way.
+
+    This route is the one place bytes pass through the API, which is why
+    production refuses to run on local storage at all.
+    """
+    if not storage.local_mode():
+        raise NotFound("Not found.")
+    if not storage.verify_local_token(key, token):
+        raise NotAuthorized("That upload link is no longer valid.")
+
+    body = await request.body()
+    if len(body) > max(settings.max_photo_bytes, settings.max_audio_bytes):
+        raise AppError("That file is too large.")
+
+    storage.write_local(key, body)
+    log.info("local_upload_received", key=key, bytes=len(body))
+    return Response(status_code=204)
 
 
 @router.post("/{asset_id}/confirm")
@@ -151,6 +215,44 @@ async def confirm_upload(
     if size is not None:
         asset.byte_size = size
 
+    if asset.kind == MediaKind.photo:
+        replaced = None
+        if req.replaces:
+            replaced = await db.get(MediaAsset, req.replaces)
+            if replaced is None or replaced.user_id != user.id or replaced.kind != MediaKind.photo:
+                raise NotFound("There's no photo to replace.")
+
+        if replaced is not None:
+            # Inherit the slot, then remove the old one. Position is what makes
+            # "replace your first photo" mean the new one *is* now first,
+            # rather than landing third and leaving the old order intact.
+            asset.display_order = replaced.display_order
+            asset.is_primary = replaced.is_primary
+            await storage.delete(replaced.object_key)
+            await db.delete(replaced)
+        else:
+            highest = await db.scalar(
+                select(func.max(MediaAsset.display_order))
+                .where(MediaAsset.user_id == user.id)
+                .where(MediaAsset.kind == MediaKind.photo)
+                .where(MediaAsset.id != asset.id)
+            )
+            asset.display_order = 0 if highest is None else highest + 1
+
+        # Claim primary if nothing holds it. The worker refines this once it
+        # has actually looked at the images, but a profile whose only photo is
+        # not primary shows nothing in the pair view, and that should not
+        # depend on a background process having run.
+        held = await db.scalar(
+            select(func.count(MediaAsset.id))
+            .where(MediaAsset.user_id == asset.user_id)
+            .where(MediaAsset.kind == MediaKind.photo)
+            .where(MediaAsset.is_primary.is_(True))
+            .where(MediaAsset.id != asset.id)
+        )
+        if not held:
+            asset.is_primary = True
+
     kind = jobs.JobKind.process_photo if asset.kind == MediaKind.photo else jobs.JobKind.process_voice
     # Job and asset commit together — the row can never exist without its work
     # queued, which is the property a separate queue service would not give.
@@ -170,11 +272,16 @@ async def confirm_upload(
 async def list_media(
     user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
+    # Tickets that were issued and never used are intents, not media. Listing
+    # them meant the grid drew a blank tile for every time somebody opened the
+    # file picker and changed their mind. Rejected ones stay, because the UI
+    # has to be able to say why they were rejected.
     assets = (
         (
             await db.execute(
                 select(MediaAsset)
                 .where(MediaAsset.user_id == user.id)
+                .where(MediaAsset.status != MediaStatus.pending_upload)
                 .order_by(MediaAsset.kind, MediaAsset.display_order, MediaAsset.created_at)
             )
         )
@@ -187,7 +294,13 @@ async def list_media(
                 "id": a.id,
                 "kind": a.kind,
                 "status": a.status,
-                "url": a.public_url if a.status == MediaStatus.processed else None,
+                # Shown as soon as the bytes are there, not once the worker
+                # has finished with them. Withholding it until `processed`
+                # meant somebody adding their first photo watched an empty
+                # square and could not tell whether the upload had worked —
+                # and this is the owner looking at their own photo, so the
+                # quality gate has nothing to do with it.
+                "url": a.public_url if a.status in REAL_PHOTO_STATES else None,
                 "is_primary": a.is_primary,
                 # Surfaced so the UI can say *why* a photo was refused rather
                 # than silently dropping it.
@@ -208,10 +321,47 @@ async def delete_media(
     if asset is None or asset.user_id != user.id:
         raise NotFound("Upload not found.")
 
+    # The first photo is the one the pair view shows, and a profile without
+    # it is not a profile. It can be *replaced* — that is what the upload
+    # endpoint is for — but removing it outright would leave an account with
+    # nothing to be compared on, which the pair loop has no answer for.
+    if asset.kind == MediaKind.photo:
+        remaining = await _photo_count(db, user.id)
+        if remaining <= MIN_PHOTOS:
+            raise AppError(
+                "Your first photo can be replaced, but not removed.",
+                minimum=MIN_PHOTOS,
+            )
+
+    was_primary = asset.kind == MediaKind.photo and asset.is_primary
+
     await storage.delete(asset.object_key)
     await db.delete(asset)
+    await db.flush()
+
+    if was_primary:
+        # Somebody has to hold it, or the account keeps photos and shows none.
+        # Oldest first, which is the rule the worker uses too, so the two
+        # cannot disagree about who is on top.
+        successor = (
+            (
+                await db.execute(
+                    select(MediaAsset)
+                    .where(MediaAsset.user_id == user.id)
+                    .where(MediaAsset.kind == MediaKind.photo)
+                    .where(MediaAsset.status.in_(REAL_PHOTO_STATES))
+                    .order_by(MediaAsset.display_order, MediaAsset.created_at)
+                    .limit(1)
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if successor is not None:
+            successor.is_primary = True
+
     await db.commit()
-    log.info("media_deleted", asset_id=asset_id, user_id=user.id)
+    log.info("media_deleted", asset_id=asset_id, user_id=user.id, was_primary=was_primary)
 
 
 @router.get("/status")

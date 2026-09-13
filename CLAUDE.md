@@ -398,10 +398,49 @@ transactional with the rows they describe — an asset row and its processing jo
 commit together or not at all. Redis arrives in phase 05 when chat fanout needs
 pub/sub and a queue is no longer the only reason for it.
 
+### Photos
+
+**Three slots, minimum one, and the first is not like the other two.** It is
+the photo the pair view shows, so it can be *replaced* but never removed — an
+account with no face has nothing for the mechanic to work on. The other two can
+be replaced or removed freely.
+
+**Replacement is one step, not delete-then-upload.** Deleting first would dip
+below the minimum; uploading first would need a fourth slot. So `replaces`
+travels on both the ticket request (to let the cap through) and the confirm
+(where the new photo inherits the old one's `display_order` and the old row
+goes). Position is what makes "replace your first photo" mean the new one *is*
+first, rather than landing third.
+
+**`display_order` decides primary, not upload time.** The worker picks the
+first *slot* that passes the face gate. Confirm also claims primary when
+nothing holds it, so a profile with one photo shows a face without waiting for
+a background job to run.
+
+**A ticket nobody uploaded to is not a photo.** It does not count toward the
+cap, does not satisfy the minimum, and is not listed — otherwise opening the
+file picker and changing your mind burned a slot and drew a blank tile.
+
+### Storage
+
 **Media never transits the API.** Signed URL → browser PUTs straight to Supabase
 → confirm. Removes the class of failure where one large upload exhausts
 application memory. Size and type are checked *both* when the URL is issued and
 against what storage reports.
+
+**`STORAGE_PROVIDER=local` is the development default, and it exists because
+the app was unworkable without it.** Every upload needed a live Supabase
+project, so a paused or renamed project made photos impossible to add and said
+only "Try again". `local` writes into `MEDIA_ROOT`, which is already served at
+`/media_uploads`. Bytes do pass through the API in that mode, which is the one
+property the signed-URL design exists to avoid — so production refuses to start
+on it.
+
+**Supabase needs the service role key, not the anon key.** Signing an upload is
+a server-side write; the anon key is subject to row-level security and is
+refused with a bare `400`. The bucket must also already exist. Both failures
+look identical from the outside, which is why storage errors now log the
+provider's own message instead of swallowing it.
 
 **Real models are opt-in outside production** (`USE_REAL_MODELS=true`). A dev
 machine must never download gigabytes by surprise. Production always uses them

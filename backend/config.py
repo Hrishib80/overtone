@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expiry_hours: int = 24
 
+    # `local` writes into MEDIA_ROOT and needs no cloud account, which is what
+    # makes the app workable offline. Production refuses it — see storage.py.
+    storage_provider: Literal["local", "supabase"] = "local"
     supabase_url: str = ""
     supabase_key: str = ""
     supabase_bucket: str = "profile-media"
