@@ -22,14 +22,25 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Two passes, and they cannot be merged into one.
+    #
+    # The server_default is what lets a NOT NULL column land on a table that
+    # already has rows. But SQLite has no real ALTER, so `batch_alter_table`
+    # rebuilds the table from the *final* state of the block and copies the
+    # old rows in — and if the default has already been dropped by the time it
+    # rebuilds, the copy has nothing to put in the new column and fails on the
+    # NOT NULL. Add it in one block, drop it in the next, by which point every
+    # row has a value.
+    #
+    # The default has to go at all because the model declares a Python-side
+    # default and no server one; leaving it would make `alembic check` report
+    # drift for ever.
     with op.batch_alter_table("users", schema=None) as batch_op:
-        # A server_default so the column can be NOT NULL on a table that
-        # already has rows, dropped again immediately so the schema matches
-        # the model — which declares a Python-side default and no server one.
-        # Leaving it in place makes `alembic check` report drift forever.
         batch_op.add_column(
             sa.Column("is_reviewer", sa.Boolean(), nullable=False, server_default=sa.false())
         )
+
+    with op.batch_alter_table("users", schema=None) as batch_op:
         batch_op.alter_column("is_reviewer", server_default=None)
 
     with op.batch_alter_table("reports", schema=None) as batch_op:

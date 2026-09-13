@@ -652,11 +652,19 @@ Each of these cost real debugging time. Do not reintroduce them.
   removed. Check through a bystander, and assert the subject *was* visible
   first. Same shape as any before/after test: without the before, the after
   proves nothing.
-- **`server_default` left on an added column makes `alembic check` fail
-  forever.** It is needed to make a column NOT NULL on a table with rows, and
-  the model declares only a Python-side default, so the schema and the models
-  disagree from then on. Add it, then drop it in the same
-  `batch_alter_table` (`alter_column(..., server_default=None)`).
+- **Adding a NOT NULL column needs a `server_default`, and dropping it needs a
+  second `batch_alter_table`.** The default is what gives existing rows a
+  value; leaving it in place makes `alembic check` report drift for ever,
+  because the model declares only a Python-side default. But dropping it in
+  the *same* batch block fails on SQLite: batch mode rebuilds the table from
+  the block's final state and then copies the old rows in, so the default is
+  already gone when the copy needs it. Two blocks — add in one,
+  `alter_column(..., server_default=None)` in the next.
+- **A migration round-trip against an empty database proves almost nothing.**
+  Exactly the bug above passed `upgrade`/`downgrade`/`upgrade` and `alembic
+  check` cleanly, then failed on the first database that had a user row in it.
+  The test suite builds its schema with `create_all`, so it never runs
+  migrations at all. Run a new migration against `dev.db`, which has rows.
 - **Demo accounts wear out.** A viewer sees each pair once, so repeated
   Playwright runs exhaust a pool and the next run looks like a broken app.
   Reseed before trusting a failure.
