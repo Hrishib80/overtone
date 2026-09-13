@@ -78,6 +78,7 @@ silently makes the whole mechanic impossible for whoever is on the short side
 ```sh
 pytest                       # 287 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
+python scripts/check_storage.py  # why uploads are or are not working
 ruff check . && ruff format --check .
 alembic check                # fails if models drifted from migrations
 python worker.py --status    # which models this process would use (free, offline)
@@ -440,7 +441,9 @@ on it.
 a server-side write; the anon key is subject to row-level security and is
 refused with a bare `400`. The bucket must also already exist. Both failures
 look identical from the outside, which is why storage errors now log the
-provider's own message instead of swallowing it.
+provider's own message instead of swallowing it — and why
+`scripts/check_storage.py` exists. It reads the `role` claim out of the key
+itself, so "did I paste the anon key" is answered rather than guessed.
 
 **Real models are opt-in outside production** (`USE_REAL_MODELS=true`). A dev
 machine must never download gigabytes by surprise. Production always uses them
