@@ -209,7 +209,7 @@ a {
   width: 100%;
   min-height: var(--tap);
   padding: var(--s-3) var(--s-4);
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--field-edge);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--ink);

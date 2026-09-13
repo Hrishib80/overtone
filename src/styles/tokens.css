@@ -42,6 +42,18 @@
   --ground: #f3f7fb;
   --rule: #d7e3ef;
   --rule-strong: #b9cbdd;
+  /* The edge of a text field, which is not the same job as a rule.
+
+     WCAG 1.4.11 wants 3:1 on anything that identifies a control, and an empty
+     input is identified by its border and nothing else — take the border away
+     and no pixel on the screen says a control is there. Cards and dividers
+     keep `--rule-strong`, because a card is identified by what is inside it;
+     darkening every hairline in the app to satisfy a rule about form fields
+     would be paying for the requirement in the wrong place.
+
+     Measured on --surface: 3.18:1 light, 3.17:1 dark, against 1.66 and 1.83
+     before. */
+  --field-edge: #7d93a8;
 
   /* Text that sits on top of an accent fill. The accents invert between
      themes — dark red becomes light red — so a hardcoded white reads as
@@ -101,6 +113,7 @@
     --ground: #080e15;
     --rule: #1f2e3c;
     --rule-strong: #33475a;
+    --field-edge: #556b7e; /* 3.17:1 on the dark --surface */
 
     /* The same surface, taken down to something that can be looked at in
        the dark. White display type still reads on it. */
@@ -138,6 +151,7 @@
   --ground: #080e15;
   --rule: #1f2e3c;
   --rule-strong: #33475a;
+  --field-edge: #556b7e; /* 3.17:1 on the dark --surface */
 
   --sky: #12283f;
   --sky-high: #1b3a5a;

@@ -920,6 +920,24 @@ Each of these cost real debugging time. Do not reintroduce them.
   5.5:1 against `--sky` itself, which is the number in the palette note — but
   the old bottom stop was darker and took the fine print down to 3.97:1. The
   stops are now chosen so the *worst* point clears 4.5:1.
+- **A focus ring inherits two things from the global rule, and both can be
+  wrong locally.** `:focus-visible { outline: 2px solid var(--red); outline-offset: 2px }`
+  is right nearly everywhere and wrong on the photo action bar twice over: red
+  on that dark fill is 1.2:1, and the tile is `overflow: hidden`, so a ring
+  drawn *outside* the button is clipped away whatever colour it is. Any
+  control on a dark surface, or inside a clipping box, needs its own ring.
+- **An undefined custom property in a `border` shorthand deletes the border.**
+  `border: 1px solid var(--field-edge)` with `--field-edge` missing is invalid
+  at computed-value time, so the whole shorthand falls back to initial values
+  — and `border-style`'s initial value is `none`. Not a wrong colour: no
+  border at all. It happened because a token was added to two theme blocks and
+  not the third, which is the ordinary way this goes wrong.
+- **`"  --x: y;"` is a substring of `"    --x: y;"`.** A plain `str.replace`
+  for a two-space-indented token also matches the four-space-indented copy
+  inside a media query, so an assertion on `count(...) == 1` fails and, if the
+  write comes after, *nothing is saved* while earlier edits in the same script
+  already were. Anchor on line numbers when patching a file that repeats a
+  declaration per theme block.
 - **A control that sits on a photograph cannot be styled against a surface.**
   The Replace/Remove buttons on the profile photo tiles were `.btn--ghost` —
   transparent, `--ink` text, `--rule-strong` border — which is exactly right
@@ -1050,12 +1068,31 @@ Every screen has now been walked in both themes by
 `scripts/check_contrast.py`. The three remaining failures are all the same
 deliberate one — the landing display type, above.
 
+**1.4.11 is checked too, now.** `check_contrast.py` has a second pass for
+things that are not text: whether you can tell where a form field is, and
+whether you can see where the keyboard is. It found two real faults — every
+text field's border was 1.66:1, and the focus ring on the photo controls was
+red on a dark bar at 1.2:1 *and* clipped by the tile's `overflow: hidden`.
+
+The first version of that pass also demanded a 3:1 boundary on every button,
+card and nav link and produced eighteen findings, every one of which was a
+photograph or a word doing its job. **The scope is the judgement**: 1.4.11
+asks whether you can tell a control is there, and a button answers that with
+its own text, which 1.4.3 already governs. An empty input answers it with
+nothing at all. So the check is form fields only, and the reasoning is written
+into the script — an audit that cries wolf gets muted, which costs more than
+the check was worth.
+
 Still open:
 - **Nobody has seen this on a real phone.** It is verified at 320, 390 and
   1440 in Chromium, which is not the same as a mid-range Android in daylight.
-- **The audit only judges text.** Icon-only buttons, focus rings, the borders
-  that carry state on a card — none of those are checked, and 1.4.11 applies
-  to them at 3:1.
+- **State on a card is still unchecked.** A selected chip against an
+  unselected one is a 1.4.11 question the auditor cannot ask, because it
+  compares an element to its background rather than to its other state.
+- **Focus rings drawn with `box-shadow` are reported as unjudged.** The colour
+  is readable but the geometry is not, and guessing which part of a shadow is
+  the ring would be inventing a number. There are four `outline: none` rules
+  in `inbox.css` worth a look by hand.
 - **It cannot judge anything over a photograph.** Text on a scrim is reported
   as unjudged, and staying unjudged is correct — but it means the card
   captions are held by a measurement written into a comment rather than by

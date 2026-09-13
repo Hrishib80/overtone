@@ -524,6 +524,17 @@
   box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.24);
 }
 
+/* The global focus ring is red at a positive offset, and neither half of that
+   works here. Red on this bar is 1.2:1 — a keyboard user gets a ring they
+   cannot see — and the tile is `overflow: hidden`, so a ring drawn *outside*
+   the button is clipped away at the tile edge no matter what colour it is.
+   White, inset, on the same dark fill the labels already rely on: 8:1, and
+   nothing to clip. */
+.edit__photo-actions .btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -3px;
+}
+
 .edit__add {
   display: grid;
   place-items: center;
