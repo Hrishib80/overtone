@@ -455,16 +455,73 @@
   font-weight: 650;
 }
 
+/* The two controls sit on top of somebody's photograph, so their legibility
+   cannot be allowed to depend on that photograph. They were ghost buttons —
+   transparent, `--ink` text — which is readable over a pale photo and simply
+   gone over a dark one, and a user's photo is whatever they uploaded.
+
+   So the bar carries the contrast itself, as one flat fill rather than a
+   gradient. Flat is the point: the density is then identical everywhere a
+   glyph sits, with no band where it has quietly faded out — which is exactly
+   how `.person__veil` went wrong. White on this over a pure white photo is
+   8.1:1 and over a black one 19:1, so nothing the user uploads can move it.
+   Fixed colours rather than tokens, because a photograph does not invert with
+   the theme. */
 .edit__photo-actions {
   position: absolute;
   inset: auto 0 0 0;
   display: flex;
-  gap: 2px;
-  padding: var(--s-2);
+  background: rgba(8, 14, 21, 0.72);
+  backdrop-filter: blur(6px);
+  /* Over a dark photo the fill is nearly the photo, so the bar stops looking
+     like a control and reads as text floating on the image. The hairline is
+     what keeps its edge findable at both extremes. */
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
 }
 
+/* Full-bleed and split evenly, rather than two inset pills with a gap between
+   them.
+
+   Two 48px word-buttons do not fit across a 140px tile, and the tiles are
+   `minmax(140px, 1fr)`. Because a flex item's `min-width` is `auto` they
+   refused to shrink below their own text and overflowed instead, so `Remove`
+   was clipped off the right edge by the tile's `overflow: hidden` — not
+   merely hard to see but impossible to press, which meant a second photo
+   could not be removed at all.
+
+   Dropping the inset and the gap buys back 18px, `min-width: 0` is what
+   actually permits shrinking, and the label truncates rather than escaping if
+   it still runs out of room. `display: block` with a matched `line-height` in
+   place of `.btn`'s inline-flex centring is what makes that truncation work —
+   text-overflow does not apply to an anonymous flex item. */
 .edit__photo-actions .btn {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: block;
+  height: 40px;
+  line-height: 40px;
+  padding: 0 var(--s-2);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 650;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Beats `.btn--ghost:hover:not(:disabled)` at (0,3,0) — that rule would
+   otherwise put `--surface-2` behind white text. */
+.edit__photo-actions .btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.edit__photo-actions .btn + .btn {
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.24);
 }
 
 .edit__add {

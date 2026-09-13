@@ -83,8 +83,11 @@ export default {
             tile.append(createElement('span', { className: 'edit__flag' }, 'Shown in pairs'));
           }
 
+          // Bare `.btn`: the action bar owns how these look, because what they
+          // sit on is a photograph rather than a surface. `--ghost` and
+          // `--small` were both lies — see the rule in nav.css.
           const actions = createElement('div', { className: 'edit__photo-actions' });
-          const swap = createElement('button', { className: 'btn btn--ghost btn--small', type: 'button' }, 'Replace');
+          const swap = createElement('button', { className: 'btn', type: 'button' }, 'Replace');
           swap.addEventListener('click', () => {
             replacing = photo.id;
             photoInput.click();
@@ -95,7 +98,7 @@ export default {
           // leave nothing to be compared on, so it is swap-only — and the
           // server refuses it too.
           if (index > 0) {
-            const drop = createElement('button', { className: 'btn btn--ghost btn--small', type: 'button' }, 'Remove');
+            const drop = createElement('button', { className: 'btn', type: 'button' }, 'Remove');
             drop.addEventListener('click', async () => {
               drop.disabled = true;
               try {

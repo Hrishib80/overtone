@@ -920,6 +920,27 @@ Each of these cost real debugging time. Do not reintroduce them.
   5.5:1 against `--sky` itself, which is the number in the palette note — but
   the old bottom stop was darker and took the fine print down to 3.97:1. The
   stops are now chosen so the *worst* point clears 4.5:1.
+- **A control that sits on a photograph cannot be styled against a surface.**
+  The Replace/Remove buttons on the profile photo tiles were `.btn--ghost` —
+  transparent, `--ink` text, `--rule-strong` border — which is exactly right
+  on a card and invisible over a dark photo, and a user's photo is whatever
+  they uploaded. Neither theme helps: the photo does not invert. The fix is
+  for the *container* to carry the contrast as one flat fill at a fixed alpha
+  (`rgba(8, 14, 21, 0.72)`), with fixed white text on top. Measured off
+  painted pixels: 8.1:1 over a near-white photo, 19.6:1 over a near-black one,
+  so nothing an upload can do moves it. Flat, not a gradient — see the scrim
+  entry above for why a fade is the version that goes wrong. A hairline top
+  edge is also needed, or the bar vanishes into a dark photo and stops
+  reading as a control even while its text is perfectly legible.
+- **A flex item will not shrink below its own text, and then it is clipped.**
+  Two 48px word-buttons across a 140px photo tile: `flex: 1` looks like it
+  should handle it, but a flex item's `min-width` is `auto`, so both sat at
+  min-content, overflowed, and `overflow: hidden` on the tile cut `Remove`
+  off. It was not merely hard to see — the clipped half is not hittable, so a
+  photo could not be removed at all, and the page looked fine because the part
+  that survived looked deliberate. `min-width: 0` is the fix; the related grid
+  case is the next entry. Worth checking any overlay control at the *smallest*
+  track width, not the one the desktop happens to give it.
 - **Grid blowout: a `white-space: nowrap` element sets a floor under every
   track above it.** `.row__preview` made the whole inbox 522px wide inside a
   390px phone — `min-width: 0` on the flex child is not enough, because the
