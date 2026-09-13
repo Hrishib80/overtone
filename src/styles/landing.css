@@ -1,139 +1,356 @@
 /* The landing composition.
-   Study of Us's front page is structurally already this screen: a coloured
-   ground, and two translucent circles you choose between. Here the two blots
-   are the two ways in — join, or sign in. */
+
+   Four beats down one column: the question with a real pair under it, the
+   argument against swiping, the round-two idea, and the way in. The hero is
+   the only part that moves, and it moves because it is a demonstration rather
+   than a decoration — everything else is set and legible at rest.
+
+   Colour follows the app's own rule, which is stricter than it looks: white
+   is the *display* voice and fails contrast at any size you would actually
+   read, so the huge heading is white and every sentence beneath it takes
+   --on-sky-soft, the deep pole, at 5.5:1. Nothing here invents a colour the
+   rest of the app does not already use. */
 
 .landing {
   min-height: 100dvh;
-  display: grid;
-  grid-template-rows: 1fr auto;
-  background:
-    radial-gradient(120% 90% at 50% 8%, #a8d2f4 0%, var(--sky) 46%, #5e9fd6 100%);
-  color: #fff;
-  overflow: hidden;
-  position: relative;
+  /* Light at the top where the heading sits, deepening as you go — so the
+     page has a direction and the sections below read as further in rather
+     than as more of the same. */
+  background: radial-gradient(130% 80% at 50% 0%, #b4d8f6 0%, var(--sky) 44%, #5b9cd4 100%);
+  color: var(--on-sky-soft);
+  overflow-x: hidden;
 }
 
-.landing__stage {
-  position: relative;
+.landing section,
+.landing footer {
+  width: min(1040px, 100%);
+  margin-inline: auto;
+  padding-inline: var(--s-5);
+}
+
+/* ---- hero --------------------------------------------------------------- */
+
+.landing__hero {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: var(--s-6);
-  padding: var(--s-7) var(--s-4) var(--s-6);
   text-align: center;
+  gap: var(--s-5);
+  padding-block: var(--s-7) var(--s-8);
 }
 
 .landing__mark {
+  font-family: var(--mono);
+  font-size: var(--t--1);
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  /* Balances the trailing letter-space so the word still reads as centred. */
+  text-indent: 0.34em;
+  /* Deep pole, not white: at 13px this is small text however decorative it
+     feels, and white on the sky is 2.1:1. */
+  color: var(--on-sky-soft);
+}
+
+/* The pair view's heading, on the front page — so arriving at the app feels
+   like the same sentence continuing rather than a different product. */
+.landing__ask {
+  margin: 0;
   font-size: var(--t-4);
-  font-weight: 800;
-  letter-spacing: -0.055em;
-  line-height: 0.9;
-  color: #fff;
-  text-shadow: 0 2px 18px rgba(11, 20, 32, 0.18);
-}
-
-.landing__mark em {
-  font-style: normal;
-  font-weight: 300;
-  display: block;
-}
-
-.landing__tagline {
-  max-width: 22ch;
-  font-size: var(--t-1);
-  font-weight: 300;
-  line-height: 1.35;
-  color: rgba(255, 255, 255, 0.93);
+  line-height: 0.95;
+  letter-spacing: -0.045em;
+  color: var(--on-sky);
   text-wrap: balance;
 }
 
-/* The two choices. Circles, because that is the source's single strongest
-   idea and it maps onto a binary choice without a card in sight. */
-.picks {
+.landing__ask-lead {
+  font-weight: 300;
+}
+
+.landing__ask-word {
+  font-weight: 800;
+}
+
+/* ---- the pair ------------------------------------------------------------ */
+
+.pair {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--s-5);
-  flex-wrap: wrap;
+  gap: clamp(var(--s-4), 6vw, var(--s-7));
+  /* Reserved, so the page does not jump between rounds when a smaller form
+     is dealt. */
+  min-height: 200px;
 }
 
-.pick {
+.blot {
   --pull-x: 0px;
   --pull-y: 0px;
-  --scale: 1;
-  position: relative;
   display: grid;
   place-items: center;
-  width: 132px;
-  height: 132px;
+  padding: 0;
   border: 0;
-  border-radius: 50%;
-  color: #fff;
-  font-family: var(--font);
-  font-size: var(--t-1);
-  font-weight: 500;
-  letter-spacing: -0.01em;
+  background: none;
   cursor: pointer;
-  transform: translate(var(--pull-x), var(--pull-y)) scale(var(--scale));
+  transform: translate(var(--pull-x), var(--pull-y));
+  transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.blot__form {
+  display: block;
+  width: clamp(120px, 26vw, 188px);
+  aspect-ratio: 1;
+  border-radius: var(--squish, 50%);
+  background: hsl(var(--hue, 220) var(--sat, 60%) var(--light, 48%));
+  transform: scale(var(--form-scale, 1));
+  box-shadow: 0 10px 40px rgba(11, 20, 32, 0.22);
   transition:
-    transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
-    font-weight 0.2s ease,
-    filter 0.28s ease;
+    transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.42s ease,
+    opacity 0.42s ease,
+    filter 0.42s ease;
 }
 
-.pick--red {
-  background: rgba(181, 0, 0, 0.87);
-}
-.pick--blue {
-  background: rgba(0, 63, 182, 0.765);
+.blot:hover .blot__form,
+.blot:focus-visible .blot__form {
+  transform: scale(calc(var(--form-scale, 1) * 1.06));
 }
 
-.pick:hover,
-.pick:focus-visible {
-  --scale: 1.13;
-  font-weight: 700;
-  filter: saturate(1.15);
+.blot:focus-visible {
+  outline: 3px solid var(--on-sky-soft);
+  outline-offset: 10px;
+  border-radius: 50%;
 }
 
-.pick span {
+/* The answer to the tap, in the same language the pair view uses: the one you
+   chose holds, and the other stands down. */
+.blot.is-picked .blot__form {
+  transform: scale(calc(var(--form-scale, 1) * 1.1));
+}
+
+.blot.is-passed .blot__form {
+  transform: scale(calc(var(--form-scale, 1) * 0.86));
+  opacity: 0.32;
+  filter: saturate(0.4);
+}
+
+.pair.is-done {
+  opacity: 0.45;
+  transition: opacity 0.5s ease;
+}
+
+.pair.is-done .blot {
+  pointer-events: none;
+}
+
+/* ---- the line that answers ----------------------------------------------- */
+
+.landing__said {
+  max-width: 46ch;
+  /* Held open so the layout does not shuffle each time the line changes
+     length, which on a page whose whole point is one reacting line would be
+     the most visible thing on it. */
+  min-height: 3.2em;
+  margin: 0;
+  font-size: var(--t-0);
+  line-height: 1.5;
+  color: var(--on-sky-soft);
+  text-wrap: pretty;
+}
+
+.landing__said.is-new {
+  animation: rise 0.36s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.landing__said.is-final {
+  max-width: 54ch;
+  font-size: var(--t-1);
+}
+
+/* Emphasis by weight, not by white. White on the sky is 2.1:1 and is the
+   display voice only — this line is meant to be read. Inter is loaded as a
+   variable font precisely so weight can carry this job. */
+.landing__said b {
+  font-weight: 800;
+  color: var(--on-sky-soft);
+}
+
+/* ---- the way in ---------------------------------------------------------- */
+
+.landing__cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-4);
+}
+
+.landing__join {
+  min-height: var(--tap);
+  padding: 0 var(--s-6);
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--red);
+  color: var(--on-accent);
+  font: inherit;
+  font-size: var(--t-0);
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.landing__join:hover {
+  background: var(--red-strong);
+}
+
+/* Once the demonstration has landed, the way in takes the emphasis — the page
+   has made its case and this is the next thing to do. */
+.landing__cta.is-loud .landing__join {
+  transform: scale(1.06);
+}
+
+.landing__signin {
+  border: 0;
+  background: none;
+  padding: var(--s-2);
+  color: var(--on-sky-soft);
+  font: inherit;
+  font-size: var(--t-0);
+  font-weight: 600;
+  cursor: pointer;
   text-decoration: underline;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 6px;
+  text-underline-offset: 5px;
 }
 
-.landing__foot {
-  padding: var(--s-4);
-  text-align: center;
+.landing__signin:hover {
+  color: var(--blue-strong);
+}
+
+/* ---- the argument -------------------------------------------------------- */
+
+.landing__why {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-5);
+  padding-block: var(--s-7) var(--s-6);
+  border-top: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+/* Also the deep pole. Only `.landing__ask` is large enough to be display
+   type — a section heading is something you read, and the hierarchy here is
+   carried by size and weight rather than by a colour that cannot be read. */
+.landing__h2 {
+  margin: 0;
+  font-size: var(--t-2);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--on-sky-soft);
+  text-wrap: balance;
+}
+
+.landing__col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.landing__h3 {
+  margin: 0;
+  font-size: var(--t-0);
+  font-weight: 700;
+  color: var(--on-sky-soft);
+  text-wrap: balance;
+}
+
+.landing__body {
+  margin: 0;
+  max-width: 62ch;
+  font-size: var(--t-0);
+  line-height: 1.6;
+  color: var(--on-sky-soft);
+  text-wrap: pretty;
+}
+
+@media (min-width: 760px) {
+  .landing__why {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--s-7);
+  }
+  .landing__why .landing__h2 {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ---- round two ----------------------------------------------------------- */
+
+/* The one white surface on the page. Round two is the idea nothing else in
+   the category has, so it is lifted off the ground rather than set as a third
+   column of the same blue. */
+/* `section.landing__later` rather than `.landing__later`, because
+   `.landing section` above is (0,1,1) and would otherwise win the width —
+   the class alone is (0,1,0) and loses despite coming later. The house trap:
+   a type-based selector quietly beating a class-based one. */
+section.landing__later {
+  /* Inset from the screen edge at every width, so it stays a card rather
+     than becoming a full-bleed band on a phone — the rounded corners and the
+     shadow only mean something if the ground shows past them. */
+  width: min(760px, calc(100% - var(--s-5)));
+  margin-block: var(--s-6);
+  padding: var(--s-7) var(--s-6);
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 18px 50px rgba(11, 20, 32, 0.16);
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.landing__later .landing__h2,
+.landing__later .landing__body {
+  color: var(--ink);
+}
+
+.landing__eyebrow {
+  margin: 0;
   font-family: var(--mono);
   font-size: var(--t--1);
-  letter-spacing: 0.06em;
-  color: rgba(255, 255, 255, 0.8);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--blue);
 }
 
-@media (min-width: 700px) {
-  .landing__stage {
-    gap: var(--s-7);
-  }
-  .pick {
-    width: 172px;
-    height: 172px;
-    font-size: var(--t-2);
-  }
-  .picks {
-    gap: var(--s-7);
-  }
+/* ---- foot ---------------------------------------------------------------- */
+
+.landing__foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-4);
+  padding-block: var(--s-7) var(--s-8);
+  text-align: center;
 }
 
-/* Phones: the blots sit side by side but must not overflow a 320px screen. */
-@media (max-width: 380px) {
-  .pick {
-    width: 118px;
-    height: 118px;
+.landing__fine {
+  margin: 0;
+  max-width: 56ch;
+  font-size: var(--t--1);
+  line-height: 1.6;
+  color: var(--on-sky-soft);
+  opacity: 0.85;
+  text-wrap: pretty;
+}
+
+@media (min-width: 760px) {
+  .landing__hero {
+    gap: var(--s-6);
+    padding-block: var(--s-8);
   }
-  .picks {
-    gap: var(--s-4);
+  .pair {
+    min-height: 240px;
   }
 }
 

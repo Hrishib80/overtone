@@ -245,6 +245,36 @@ deep-navy `--sky`, are redefined for dark mode.
 own `interested_in` choice reflected back; it says nothing about either
 subject, so round 1's photo-only rule is untouched.
 
+### The landing page
+
+**The hero is the mechanic, not a description of it.** The old version
+explained pairwise comparison in a sentence and then offered two circles that
+*looked* like the mechanic but were actually the nav. Now the circles are a
+real pair: the app's own question over them, a choice that answers rather than
+navigates, and the difference named back to you after you pick. Somebody
+understands the product by doing it once, in about a second, and it is the
+only thing on the page a competitor could not also say.
+
+**Three rounds, then it reads your picks back** — "warmer, looser, heavier."
+Being told what you chose is the moment the idea lands; three shapes is a
+parlour trick, three faces is a preference, and the copy says exactly that.
+
+**The two forms are siblings, never opposites.** Red against blue would be two
+brand colours and a trivial choice, while the whole claim is that the pair is
+*nearly the same*. The difference has to be small enough that you notice
+yourself preferring rather than deciding.
+
+**Each side owns its own word.** A fixed line per round — "you went for the
+warmer one" whichever you picked — would be the page telling you what you
+chose, which is precisely the thing a swipe app does.
+
+**Abstract on purpose.** Inventing faces for a dating app's front page would
+be a lie about what is inside.
+
+**Round two gets the only white surface on the page.** It is the idea nothing
+else in the category has, so it is lifted off the ground rather than set as a
+third column of the same blue.
+
 ### Joining
 
 **Anyone may join with any address.** The campus domain check is gone, and so
@@ -749,6 +779,12 @@ Each of these cost real debugging time. Do not reintroduce them.
   check` cleanly, then failed on the first database that had a user row in it.
   The test suite builds its schema with `create_all`, so it never runs
   migrations at all. Run a new migration against `dev.db`, which has rows.
+- **A type-based selector quietly outranks a class.** `.landing section` is
+  (0,1,1) and `.landing__later` is (0,1,0), so the section rule won the width
+  no matter that it came first in the file — the card silently stayed
+  1040px wide. Qualify the class (`section.landing__later`) rather than
+  reordering, because reordering does not fix it. Watch for this wherever a
+  layout rule is written against an element name.
 - **Demo accounts wear out.** A viewer sees each pair once, so repeated
   Playwright runs exhaust a pool and the next run looks like a broken app.
   Reseed before trusting a failure.
@@ -807,9 +843,17 @@ Still open:
   every report" is a claim the reporter currently has to take on faith.
 
 ### Phase 06 — Design system
-- Art-directed landing page. Everything else now shares the sky and the motion
-  conventions below; the landing page is the one surface that could still be
-  more than tidy.
+
+Done: the **landing page** is art-directed around the mechanic itself (see the
+reasoning above), and every surface now shares the sky, the contrast rule and
+the motion conventions below.
+
+Still open:
+- **Nobody has seen this on a real phone.** It is verified at 320, 390 and
+  1440 in Chromium, which is not the same as a mid-range Android in daylight.
+- The two-pole palette is carried everywhere, but nothing has been checked
+  against a real dark-mode device either — the tokens redefine, the screens
+  have only been looked at in light.
 
 **Motion conventions, now that there are some.** Entrances are 260–440ms on
 `cubic-bezier(0.22, 1, 0.36, 1)`, staggered 40–70ms per item via a `.rise`
