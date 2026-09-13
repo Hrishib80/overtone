@@ -88,7 +88,19 @@
   border-radius: 0;
 }
 
+/* Out of the flow, so a count arriving never moves anything.
+
+   It used to sit inline in its link. Every page drew the bar first, then the
+   counts came back from the server and every link after the first count slid
+   right by the width of a pill — 4 to 12px, measured, on every load. Above a
+   pair of photographs that is a twitch at the top of the screen each time.
+   Tucked into the top-right corner of its link instead: clear of the label's
+   last letter horizontally, and of the next link's text, and inside the bar's
+   scroll area so it is never clipped. */
 .nav__count {
+  position: absolute;
+  top: 0;
+  right: -6px;
   display: inline-grid;
   place-items: center;
   min-width: 18px;

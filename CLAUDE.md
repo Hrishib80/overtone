@@ -953,6 +953,43 @@ Each of these cost real debugging time. Do not reintroduce them.
 - **`grid-template-rows: auto 1fr auto` stretches a short conversation.** One
   message got a 60dvh log and a composer stranded at the bottom of a void. Size
   by content and cap with `max-height`.
+- **A page grid with counted rows breaks the moment a child is added — twice
+  now.** `.inbox` got a third child in a two-row grid; then the navbar was
+  prepended to `.pairs`, whose rows were `auto 1fr auto` for header, stage and
+  footer. The rows re-assigned themselves silently: the *heading* took `1fr`
+  and became a slab of empty sky, and the photographs were pushed into an
+  `auto` row off the bottom of the screen. Nothing errored and every element
+  was individually correct. Page shells are a flex column now, with the one
+  stretching region marked `flex: 1` — a later element takes its own height
+  and cannot steal the stretch.
+- **"Shaky" was a scrollbar.** That same broken `.pairs` layout overflowed the
+  viewport for a moment on every load and every pick, and on Windows a
+  scrollbar that appears and vanishes slides a centred page sideways by its
+  width each time. Headless Chromium draws zero-width scrollbars, so a
+  screenshot never shows it — measure `scrollHeight > innerHeight` per frame
+  across a load and a decision, which is what found it. The old page toggled
+  it zero times; the broken one twice per load.
+- **Anything that arrives after first paint must not take up space.** The
+  navbar's counts load after the bar draws, and an inline pill pushed every
+  later link 4–12px right on every page. Counts are absolutely positioned in
+  the corner of their link now. The same rule caught `.pairs__sub`, whose
+  reserved `min-height: 1.4em` was 3px short of its real line box (1.6em), so
+  the photographs dropped 3px when the subtitle arrived — on the old page too.
+  Reserve with `1lh`, which is a line box by definition.
+- **Nine dev servers were running at once.** `npx vite --port 5173` quietly
+  takes 5174 when 5173 is busy, so every session that started one without
+  checking added another, up to nine across ports 5173–5190 — all watching
+  the same folder and rewriting the same `node_modules/.vite` cache. Worse, the
+  browser's `localhost` resolved to an IPv6 instance started a day earlier
+  while scripts hit a different IPv4 one, so what was measured was not what
+  was on screen. Every edit to any JS file also forces a full reload of every
+  open tab through every server. Start Vite with `--strictPort`, and list the
+  listeners before starting another.
+- **A worktree with a junction in it can take `node_modules` with it.** To
+  serve an old commit beside the current one, the worktree needed
+  `node_modules`, linked by junction. A recursive delete follows a junction
+  into its target, so the link is removed on its own first (`cmd /c rmdir`,
+  no `/s`) and the target checked before the worktree goes.
 - **Red is the decline colour.** It is also `.btn`'s default background, so any
   new positive call-to-action arrives red unless told otherwise. The unlock and
   the composer are explicitly blue.

@@ -9,11 +9,23 @@
    photographs are the only bright rectangles on it, which is the entire job
    of the background here: everything that is not a face recedes. */
 
+/* A column, not a grid with counted rows — and that choice is the fix.
+
+   This was `grid-template-rows: auto 1fr auto`, written for header, stage and
+   footer. The navbar arrived as a new first child and the footer left, so the
+   rows silently re-assigned themselves: the bar took `auto`, the *heading*
+   took `1fr` and stretched into a slab of empty sky, and the photographs were
+   left in an `auto` row shoved against the bottom of the screen. They ran off
+   the fold, the page briefly overflowed on every load and every pick, and on
+   Windows the scrollbar appearing and vanishing slid the whole screen sideways
+   by its width each time. It read as shaky because it was moving.
+
+   The same counted-rows mistake already broke the inbox once. With flex, an
+   element added later takes its own height and the stage keeps the rest. */
 .pairs {
   min-height: 100dvh;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   background: var(--sky);
   color: var(--on-sky);
 }
@@ -36,6 +48,16 @@
   font-weight: 300;
   letter-spacing: -0.02em;
   color: var(--on-sky-soft);
+}
+
+/* The bar carries the wordmark from 721px up, and two of them stacked above
+   one question looked like a mistake because it was one. Below that width the
+   bar drops its own mark to make room for the links, so this one comes back
+   and a phone sees the pair view exactly as it was before the bar existed. */
+@media (min-width: 721px) {
+  .pairs__mark {
+    display: none;
+  }
 }
 
 .pairs__mark b {
@@ -68,19 +90,13 @@
   color: var(--on-sky-soft);
   font-size: var(--t-0);
   font-weight: 300;
-  min-height: 1.4em; /* reserve the line so the layout doesn't jump */
-}
-
-/* Anything small enough that it actually has to be read takes the deep pole
-   instead of white — 5.5:1 on the sky, where white would be 2.1:1. */
-.pairs__who {
-  margin-top: var(--s-3);
-  color: var(--on-sky-soft);
-  font-size: var(--t--1);
-}
-
-.pairs__who b {
-  font-weight: 650;
+  /* Reserve exactly one line, so the photographs do not drop when the words
+     arrive. This said `1.4em`, but the line box is 1.6em (26.9px against
+     23.5px reserved), so the pair still fell 3px on every load — on the old
+     page as well, measured. `1lh` is one line box whatever the line-height
+     becomes; the em value is only for a browser without `lh`. */
+  min-height: 1.6em;
+  min-height: 1lh;
 }
 
 /* Only when the words actually change, so the subtitle is not permanently
@@ -96,40 +112,20 @@
   }
 }
 
+/* Takes whatever height the bar and the heading leave, and centres the pair
+   in it — which is what keeps the photographs in one place from the skeleton
+   to the loaded pair to the next one. The bottom padding stands in for the
+   footer that used to sit under the pair, so it is centred where it always
+   was rather than drifting down by a footer's height. */
 .pairs__stage {
+  flex: 1 1 auto;
   display: grid;
   align-content: center;
   padding-inline: var(--s-4);
+  padding-block-end: max(var(--s-7), env(safe-area-inset-bottom));
   width: 100%;
   max-width: 1100px;
   margin-inline: auto;
-}
-
-.pairs__foot {
-  display: flex;
-  justify-content: center;
-  gap: var(--s-5);
-  padding: var(--s-4);
-  padding-bottom: max(var(--s-4), env(safe-area-inset-bottom));
-  text-align: center;
-}
-
-@keyframes badge-in {
-  from {
-    opacity: 0;
-    transform: scale(0.2);
-  }
-}
-
-.pairs__signout {
-  border: 0;
-  padding: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 
 /* ---- Round 1 ------------------------------------------------------------ */
