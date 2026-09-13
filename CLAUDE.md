@@ -12,7 +12,7 @@ making architectural changes.
 
 ## Current state
 
-Phases 00–04 are complete, phase 05 is under way. **287 tests passing**, lint clean,
+Phases 00–04 are complete, phase 05 is under way. **315 tests passing**, lint clean,
 migration round-trips, frontend builds, and the whole loop — pair, unlock,
 request, reply — has been driven end to end in a browser at phone and laptop
 width.
@@ -328,6 +328,57 @@ boundary" into "about one more request", not into nothing. The estimate
 assumes the previous window's uses were spread evenly, so a burst packed into
 its last moment is slightly under-counted. Documented and tested as that.
 
+### Consent, and erasure
+
+**A face embedding is a biometric identifier** under India's DPDP Act, so the
+permission to compute one has to be specific, informed and withdrawable. That
+shapes four things, all in `backend/privacy.py`:
+
+1. **Asked at the photo step, not in terms of service.** It is the first
+   moment the question means anything to the person answering it, and the
+   words are served by the API (`purpose`) rather than living only in the
+   frontend — consent to an unstated purpose is not consent.
+2. **Checked before the signed URL is issued**, not before the embedding is
+   computed. The honest place to stop is before somebody's face reaches our
+   storage at all. The worker checks again, because consent can be withdrawn
+   while a job sits in the queue; a photo caught there is *rejected*, not left
+   unprocessed, since an unprocessed photo never went through the face gate.
+3. **`notice_version` is stored with the grant.** When the wording changes in
+   a way that alters what is being agreed to, the old answer is an answer to
+   the old question: `needs_restatement` goes true and a second row is written
+   rather than the old one edited. Which words were agreed to, and when, is
+   the entire record.
+4. **Withdrawal is one click and asks nothing back.** A withdrawal guarded by
+   a password, a survey or a confirmation chain is harder than the grant was,
+   which is the thing the law exists to prevent. It deletes `face_vector`
+   immediately, which also removes the account from pairing on its own —
+   `_eligible_candidates` requires a vector, so there is no separate "disabled"
+   state to keep in sync.
+
+**Erasure is explicit, not a cascade**, even though every foreign key to
+`users` is already `ON DELETE CASCADE`. Three reasons: SQLite does not enforce
+`ondelete` unless told to, so the whole test suite would exercise a behaviour
+production does not have, in the direction that silently leaves data behind;
+`jobs.subject_id` has **no** foreign key at all, and those rows carry user ids
+and object keys; and "it cascaded" is not an answer to "what did you delete" —
+`erase()` returns a count per table so the claim is checkable. Storage objects
+go first, while the rows naming them still exist. The cascades stay as a
+backstop.
+
+**Deleting an account takes the whole conversation, not just its half.**
+Deleting only the messages this person *sent* would leave the other side of a
+chat hanging off a connection that no longer exists. But a report they *made*
+survives them with `reporter_id` nulled: four reports from unrelated people is
+the pattern, and losing the count because a reporter left would hide exactly
+the behaviour worth seeing.
+
+**The test that matters is `test_deleting_an_account_leaves_nothing_that_names_them`.**
+It scans every table in the schema for the user id as a substring — which also
+catches it inside a rate-limit bucket and a connection key — rather than
+asserting the deletes we happened to remember writing. It fails when somebody
+adds a table with a user id and forgets `OWNED_BY_USER`, which is how this
+requirement breaks in practice.
+
 ### Identity model
 
 Three separate fields, and the separation is load-bearing:
@@ -497,9 +548,19 @@ Each of these cost real debugging time. Do not reintroduce them.
   a `render_item` hook mapping `UTCDateTime` → `sa.DateTime(timezone=True)`;
   pgvector columns need `import pgvector.sqlalchemy` patched into the generated
   file, plus `CREATE EXTENSION IF NOT EXISTS vector` guarded by dialect.
-- **Migrations are squashed, not layered.** Pre-launch with no deployed data,
-  each phase regenerates one initial migration. **Stop doing this the moment
-  anything real is deployed.**
+- **Migrations are layered now, not squashed.** They *were* squashed while
+  nothing was deployed — each phase regenerated one initial migration. That
+  era ended with `b1f4a7c92d30`: there is a Supabase database in use with real
+  photos in it, stamped `d3c9cf01a102`, and regenerating that revision would
+  leave `alembic upgrade head` unable to find where that database is. Add
+  migrations from here; never replace one.
+- **Autogenerate does not render a `Vector` column correctly on its own.** The
+  class is `VECTOR`, not `Vector`, so the old `render_item` branch never fired
+  and the generated file used `pgvector.sqlalchemy` without importing it. Fixed
+  in `alembic/env.py`, which now also re-renders the `.with_variant(sa.JSON(),
+  'sqlite')` half — without it the column cannot be built on SQLite, which is
+  every local `alembic upgrade head`. The `CREATE EXTENSION IF NOT EXISTS
+  vector` guard is still added by hand.
 - **`rm -f` hides failures.** Three SQLite databases got committed because a
   cleanup `rm -f` silently failed against files a running uvicorn still held
   open, and `git add -A` swept them in. Check `git status` before staging.
@@ -572,28 +633,19 @@ Each of these cost real debugging time. Do not reintroduce them.
 
 ### Phase 05 — Trust & safety
 
-Done: **block / report** (`backend/safety.py`) and **rate limits**
-(`backend/ratelimit.py`), both with the reasoning recorded above.
+Done: **block / report** (`backend/safety.py`), **rate limits**
+(`backend/ratelimit.py`), and **biometric consent + account erasure**
+(`backend/privacy.py`, `backend/account.py`, `src/pages/SettingsPage.js`), all
+with the reasoning recorded above.
 
 Still open:
 - Real image moderation (nudity, minors, faces) + human review queue. The face
   gate today only checks "exactly one clear face". `Report` rows exist and are
   queryable by `(status, created_at)`, but **there is no reviewer UI** — a
   report today goes into a table nobody opens.
-- **Biometric consent** — ArcFace vectors are biometric identifiers under
-  India's DPDP Act. Needs explicit, specific consent at upload, deletion that
-  actually removes vectors, and a documented purpose.
-- Account deletion reaching Postgres + vectors + object storage — now also
-  `affinities`, `connections`, `chat_messages`, `viewer_preferences`, `blocks`
-  and `reports` (a report must outlive its reporter; `reporter_id` is already
-  `SET NULL` for that reason).
 - Redis for chat fanout and presence. The chat socket exists
   (`backend/signaling.py`) but is per-process and the frontend does not use it
   yet — the thread view polls on open instead.
-- **No block list UI.** Blocking and reporting are reachable from a
-  conversation and from a revealed profile, but there is no screen that lists
-  who you have blocked or lets you undo it — `GET/DELETE /api/safety/blocks`
-  exist and are unused.
 - **Nothing reports a photo or a prompt specifically.** The report is about a
   person; `context` carries a connection id when there is one, so a reviewer
   can see the conversation but not "this image".
@@ -680,7 +732,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 287 and rising; every bug found gets a regression
+- **Tests are the contract.** 315 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.

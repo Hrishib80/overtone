@@ -25,6 +25,7 @@ from backend.database import (
 from backend.jobs import JobKind
 from backend.jobs import enqueue as jobs_enqueue
 from backend.logging_config import get_logger
+from backend.privacy import has_biometric_consent
 
 log = get_logger(__name__)
 
@@ -46,6 +47,21 @@ async def process_photo(db: AsyncSession, payload: dict[str, Any]) -> None:
     """
     asset = await db.get(MediaAsset, payload["asset_id"])
     if asset is None or asset.status == MediaStatus.rejected:
+        return
+
+    # Consent can be taken back between the upload and this job running, and
+    # a queue that is behind is exactly when that gap is widest. Checked here
+    # too, because the check at upload time was about a different moment.
+    #
+    # Rejecting rather than leaving it unprocessed: an unprocessed photo has
+    # never been through the quality gate, and a photo nobody looked at is not
+    # something to start showing people.
+    if not await has_biometric_consent(db, asset.user_id):
+        asset.status = MediaStatus.rejected
+        asset.gate_reason = "consent_withdrawn"
+        asset.processed_at = utcnow()
+        await db.commit()
+        log.info("photo_dropped_no_consent", asset_id=asset.id, user_id=asset.user_id)
         return
 
     image = await storage.download(asset.object_key)

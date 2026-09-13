@@ -56,6 +56,13 @@ export default {
       who.replaceChildren();
       if (!email) return;
       who.append('signed in as ', createElement('b', {}, email), ' · ');
+      const settings = createElement(
+        'button',
+        { className: 'pairs__signout', type: 'button' },
+        'settings'
+      );
+      settings.addEventListener('click', () => router.go('/settings'));
+      who.append(settings, ' · ');
       const out = createElement('button', { className: 'pairs__signout', type: 'button' }, 'sign out');
       out.addEventListener('click', () => {
         store.signOut();

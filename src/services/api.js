@@ -137,6 +137,23 @@ class Api {
     return this.request('POST', `/api/connections/${connectionId}/read`);
   }
 
+  // ---- account ----
+  getConsent() {
+    return this.request('GET', '/api/account/consent');
+  }
+
+  giveConsent() {
+    return this.request('POST', '/api/account/consent');
+  }
+
+  withdrawConsent() {
+    return this.request('DELETE', '/api/account/consent');
+  }
+
+  deleteAccount(password) {
+    return this.request('POST', '/api/account/delete', { password });
+  }
+
   // ---- safety ----
   getReportReasons() {
     return this.request('GET', '/api/safety/reasons');

@@ -11,13 +11,15 @@ from sqlalchemy import select
 from backend import jobs
 from backend.database import MediaAsset, MediaStatus, ProfileEmbedding
 from backend.ml.base import FACE_DIM, TEXT_DIM, VOICE_DIM
-from tests.conftest import TEST_DOMAIN, complete_profile, register_and_verify, run_jobs
+from tests.conftest import TEST_DOMAIN, complete_profile, give_consent, register_and_verify, run_jobs
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake-image-payload" * 8
 WEBM = b"\x1aE\xdf\xa3" + b"fake-audio-payload" * 8
 
 
 async def request_upload(client, headers, *, kind="photo", content_type="image/jpeg", size=1000):
+    if kind == "photo":
+        await give_consent(client, headers)
     return await client.post(
         "/api/media/upload-url",
         headers=headers,

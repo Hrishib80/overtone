@@ -15,6 +15,7 @@ from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend import mail, storage
+from backend.account import router as account_router
 from backend.auth import router as auth_router
 from backend.config import settings
 from backend.database import engine
@@ -132,6 +133,7 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
 
     app.include_router(auth_router)
+    app.include_router(account_router)
     app.include_router(profile_router)
     app.include_router(media_router)
     app.include_router(pairs_router)

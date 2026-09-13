@@ -88,6 +88,12 @@ REGISTER = Limit("register", 120, timedelta(hours=1))
 # not ask for it, and loose per network for the campus-NAT reason above.
 RESEND_VERIFICATION = Limit("resend_verification", 5, timedelta(hours=1))
 
+# Re-entering a password inside an existing session. Separate from the login
+# limiter so that confirming a deletion cannot lock somebody out of signing
+# in — and so that a stolen session cannot be used to guess the password by
+# spending the account's login budget from the inside.
+CONFIRM_PASSWORD = Limit("confirm_password", 10, timedelta(minutes=15))
+
 ALL_LIMITS = (
     SEND_REQUEST,
     RESEND_VERIFICATION,
@@ -96,6 +102,7 @@ ALL_LIMITS = (
     LOGIN_PER_ACCOUNT,
     LOGIN_PER_ADDRESS,
     REGISTER,
+    CONFIRM_PASSWORD,
 )
 
 

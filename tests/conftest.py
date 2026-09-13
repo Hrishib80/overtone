@@ -94,8 +94,23 @@ async def run_jobs(db_sessionmaker) -> int:
             total += 1
 
 
+async def give_consent(client, headers):
+    """Agree to face analysis. Idempotent, so callers need not track it."""
+    granted = await client.post("/api/account/consent", headers=headers)
+    assert granted.status_code == 201, granted.text
+    return granted.json()
+
+
 async def upload_media(client, headers, store, *, kind="photo", content_type="image/jpeg", body=None):
-    """Walk the real three-step upload, with storage faked underneath."""
+    """Walk the real three-step upload, with storage faked underneath.
+
+    Consent is given here rather than in `register_and_verify`, so that a test
+    which wants a verified account *without* it still has one to work with —
+    which is the whole point of the gate.
+    """
+    if kind == "photo":
+        await give_consent(client, headers)
+
     ticket = await client.post(
         "/api/media/upload-url",
         headers=headers,

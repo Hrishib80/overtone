@@ -31,6 +31,7 @@ from backend.database import (
 )
 from backend.errors import AppError, NotAuthorized, NotFound
 from backend.logging_config import get_logger
+from backend.privacy import has_biometric_consent
 from backend.ratelimit import UPLOAD_TICKET, consume
 
 log = get_logger(__name__)
@@ -132,6 +133,16 @@ async def create_upload_url(
         raise AppError(f"That file is too large. The limit is {max_bytes // (1024 * 1024)} MB.")
 
     if req.kind == MediaKind.photo:
+        # Asked before the URL is issued rather than before the embedding is
+        # computed. Consent covers the face vector, but the honest place to
+        # stop is before somebody's face reaches our storage at all — not
+        # afterwards, with an apology and a deletion.
+        if not await has_biometric_consent(db, user.id):
+            raise AppError(
+                "We need your permission to read faces from your photos first.",
+                needs="biometric_consent",
+            )
+
         # A replacement is not an addition, so it does not have to fit under
         # the cap — the old photo goes at confirm, and the count comes out the
         # same. Verified here rather than trusted, or `replaces` would be a

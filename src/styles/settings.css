@@ -1,0 +1,249 @@
+/* Settings, and the consent card that appears mid-onboarding.
+
+   Deliberately the plainest screen in the app. Everything here is a decision
+   somebody is making about their own data, and a page that is working hard to
+   look good while asking for a permission is a page that is selling. White
+   cards on the ground, one column, no motion beyond the reveal of the
+   confirmation the delete button opens. */
+
+.settings {
+  min-height: 100vh;
+  background: var(--sky);
+  padding-bottom: var(--s-8);
+}
+
+.settings__head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--sky);
+  border-bottom: 1px solid rgba(0, 48, 140, 0.18);
+}
+
+.settings__head-inner {
+  width: min(720px, 100%);
+  margin-inline: auto;
+  padding: var(--s-4) var(--s-5);
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.settings__back {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--on-sky-soft);
+  font: inherit;
+  font-size: var(--t--1);
+  font-weight: 600;
+}
+
+.settings__back:hover {
+  text-decoration: underline;
+}
+
+.settings__title {
+  margin: 0;
+  font-size: var(--t-1);
+  color: var(--on-sky);
+  letter-spacing: -0.02em;
+}
+
+.settings__body {
+  width: min(720px, 100%);
+  margin-inline: auto;
+  padding: var(--s-5);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-5);
+}
+
+.settings__card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: var(--s-5);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-3);
+  color: var(--ink);
+}
+
+/* The one card that should feel different from the others. Not louder — the
+   red edge is enough to say "this one is final" without shouting. */
+.settings__card--grave {
+  border-color: var(--red);
+  box-shadow: inset 3px 0 0 var(--red);
+}
+
+.settings__card-title {
+  margin: 0;
+  font-size: var(--t-1);
+  letter-spacing: -0.02em;
+}
+
+.settings__lede,
+.settings__note,
+.settings__muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t--1);
+  line-height: 1.55;
+  max-width: 60ch;
+}
+
+.settings__note {
+  color: var(--ink-2);
+}
+
+.settings__list {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-2);
+}
+
+.settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-3) 0;
+  border-top: 1px solid var(--rule);
+}
+
+.settings__row:first-child {
+  border-top: 0;
+}
+
+.settings__row-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.settings__consent {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-3);
+  width: 100%;
+}
+
+/* State as a word plus a colour, never colour alone. */
+.settings__status {
+  margin: 0;
+  font-size: var(--t--1);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: var(--s-1) var(--s-3);
+  border-radius: var(--radius);
+}
+
+.settings__status.is-on {
+  color: var(--ok);
+  background: var(--ok-wash);
+}
+
+.settings__status.is-off {
+  color: var(--warn);
+  background: var(--warn-wash);
+}
+
+.settings__danger {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  animation: settings-open 0.18s ease both;
+}
+
+.settings__label {
+  font-size: var(--t--1);
+  font-weight: 600;
+}
+
+.settings__danger-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+}
+
+@keyframes settings-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings__danger {
+    animation: none;
+  }
+}
+
+/* ---- Buttons this screen introduces ------------------------------------ */
+
+/* Red is the brand's primary, so a destructive action cannot simply be red —
+   it would look like every other confirm. Outlined until you are on it. */
+.btn--danger {
+  background: transparent;
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: var(--red);
+  color: var(--on-accent);
+}
+
+.btn--small {
+  min-height: 36px;
+  padding: 0 var(--s-4);
+  font-size: var(--t--1);
+}
+
+/* ---- The consent card inside onboarding -------------------------------- */
+
+.consent {
+  background: var(--blue-wash);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  padding: var(--s-5);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-3);
+  color: var(--ink);
+}
+
+/* Once answered it stops being a card and becomes a note — it has said what
+   it needed to say and should not keep occupying the step. */
+.consent--done {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.consent__title {
+  margin: 0;
+  font-size: var(--t-0);
+  letter-spacing: -0.01em;
+}
+
+.consent__body,
+.consent__done {
+  margin: 0;
+  font-size: var(--t--1);
+  line-height: 1.55;
+  color: var(--ink-2);
+  max-width: 60ch;
+}
+
+.consent__done {
+  color: var(--muted);
+}

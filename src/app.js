@@ -8,6 +8,7 @@ import VerifyPage from './pages/VerifyPage.js';
 import OnboardingPage from './pages/OnboardingPage.js';
 import PairPage from './pages/PairPage.js';
 import InboxPage from './pages/InboxPage.js';
+import SettingsPage from './pages/SettingsPage.js';
 
 async function boot() {
   router.register({
@@ -18,6 +19,7 @@ async function boot() {
     '/onboarding': OnboardingPage,
     '/pairs': PairPage,
     '/inbox': InboxPage,
+    '/settings': SettingsPage,
   });
 
   // Resolve the account before the first render, so the router never has to

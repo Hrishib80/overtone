@@ -742,3 +742,35 @@ class RateLimitWindow(Base):
     bucket = Column(String, nullable=False)
     window_start = Column(UTCDateTime(), nullable=False)
     count = Column(Integer, nullable=False, default=0)
+
+
+class BiometricConsent(Base):
+    """Permission to compute a numeric representation of somebody's face.
+
+    A face embedding is a biometric identifier under India's DPDP Act, which
+    means it needs consent that is specific, informed and withdrawable — not a
+    line buried in terms of service. So it is its own record with its own
+    timestamps, rather than a boolean on the user.
+
+    `purpose` and `notice_version` are stored with the grant because consent is
+    to a *stated purpose* at a point in time. Changing what the vectors are
+    used for, or the words used to explain it, makes previously collected
+    consent no longer consent to the new thing — and that is impossible to
+    argue either way without knowing which version somebody agreed to.
+
+    Withdrawal is kept rather than deleted, for the same reason a report
+    outlives its reporter: "this person withdrew on this date" is the evidence
+    that the deletion which followed was justified.
+    """
+
+    __tablename__ = "biometric_consents"
+    __table_args__ = (Index("ix_biometric_consent_user", "user_id"),)
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    purpose = Column(Text, nullable=False)
+    notice_version = Column(String, nullable=False)
+
+    granted_at = Column(UTCDateTime(), nullable=False, default=utcnow)
+    withdrawn_at = Column(UTCDateTime(), nullable=True)

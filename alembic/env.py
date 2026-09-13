@@ -45,9 +45,15 @@ def _render_item(type_, obj, autogen_context):
     if type_ == "type" and obj.__class__.__name__ == "UTCDateTime":
         autogen_context.imports.add("import sqlalchemy as sa")
         return "sa.DateTime(timezone=True)"
-    if type_ == "type" and obj.__class__.__name__ == "Vector":
+    # Matched on VECTOR, which is what pgvector's `Vector` actually resolves
+    # to — matching on "Vector" silently never fired, and the generated file
+    # then referenced `pgvector.sqlalchemy` without importing it. The variant
+    # is rendered too: without it the column is unbuildable on SQLite, which
+    # is every local `alembic upgrade head`.
+    if type_ == "type" and obj.__class__.__name__ == "VECTOR":
         autogen_context.imports.add("import pgvector.sqlalchemy")
-        return f"pgvector.sqlalchemy.Vector(dim={obj.dim})"
+        autogen_context.imports.add("import sqlalchemy as sa")
+        return f"pgvector.sqlalchemy.Vector(dim={obj.dim}).with_variant(sa.JSON(), 'sqlite')"
     return False
 
 

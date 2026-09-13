@@ -49,6 +49,7 @@ export const GATE_REASONS = {
   face_too_small: 'Your face is too small in that photo — try a closer shot.',
   low_confidence: "That photo isn't clear enough. Try better light.",
   unreadable_image: "We couldn't read that file.",
+  consent_withdrawn: 'You withdrew permission to read faces while this was uploading.',
   too_large: 'That file is too large.',
 };
 

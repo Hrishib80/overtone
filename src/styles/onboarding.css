@@ -32,6 +32,25 @@
   gap: var(--s-4);
 }
 
+/* Quiet on purpose. It is the way out of the funnel, and it should be
+   findable without competing with the step you are on. */
+.ob__settings {
+  margin-inline-start: auto;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t--1);
+  font-weight: 600;
+  color: var(--on-sky-soft);
+  white-space: nowrap;
+}
+
+.ob__settings:hover {
+  text-decoration: underline;
+}
+
 .ob__step {
   font-family: var(--mono);
   font-size: var(--t--1);

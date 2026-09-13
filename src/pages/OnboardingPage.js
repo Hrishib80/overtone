@@ -110,7 +110,11 @@ export default {
     const progress = createElement('div', { className: 'progress' });
     const bar = createElement('div', { className: 'progress__bar' });
     progress.append(bar);
-    headInner.append(stepLabel, progress);
+    // Reachable from inside the funnel, because the way out of a half-built
+    // profile has to be as available as the way through it.
+    const settingsLink = createElement('button', { className: 'ob__settings', type: 'button' }, 'Settings');
+    settingsLink.addEventListener('click', () => router.go('/settings'));
+    headInner.append(stepLabel, progress, settingsLink);
     head.append(headInner);
 
     const body = createElement('main', { className: 'ob__body' });
@@ -227,12 +231,81 @@ export default {
       multiple: 'true',
     });
     const photoNote = createElement('p', { className: 'photo-note' });
-    stepPhotos.append(photoGrid, photoNote, photoInput);
+
+    /* The permission has to be asked for here, next to the thing it is about,
+       and in words that say what actually happens. A checkbox in a terms page
+       is not consent to a biometric identifier — and this is also simply the
+       first moment the question makes any sense to the person answering it. */
+    const consentCard = createElement('div', { className: 'consent' });
+    let consent = null;
+
+    stepPhotos.append(consentCard, photoGrid, photoNote, photoInput);
 
     let photos = [];
     // Set while a replacement is in flight, so the file picker knows whether
     // the next file is a new photo or a swap for an existing one.
     let replacing = null;
+
+    async function loadConsent() {
+      try {
+        consent = await api.getConsent();
+      } catch {
+        consent = null;
+      }
+      renderConsent();
+    }
+
+    function consentGiven() {
+      return Boolean(consent?.granted) && !consent.needs_restatement;
+    }
+
+    function renderConsent() {
+      consentCard.replaceChildren();
+      consentCard.classList.toggle('consent--done', consentGiven());
+
+      if (consentGiven()) {
+        consentCard.append(
+          createElement(
+            'p',
+            { className: 'consent__done' },
+            'You’ve allowed us to read faces from your photos. You can take that back whenever you like, in settings.'
+          )
+        );
+      } else {
+        consentCard.append(
+          createElement('h3', { className: 'consent__title' }, 'Before you add a photo'),
+          createElement(
+            'p',
+            { className: 'consent__body' },
+            consent?.purpose ||
+              'We work out a numeric description of your face from your photos, and use it only to find people who look similar to you.'
+          ),
+          (() => {
+            const agree = createElement(
+              'button',
+              { className: 'btn consent__agree', type: 'button' },
+              'I agree — read faces from my photos'
+            );
+            agree.addEventListener('click', async () => {
+              agree.disabled = true;
+              try {
+                consent = await api.giveConsent();
+              } catch (error) {
+                toast(error.message, { error: true });
+                agree.disabled = false;
+                return;
+              }
+              renderConsent();
+              renderPhotos();
+            });
+            return agree;
+          })()
+        );
+      }
+
+      photoGrid.hidden = !consentGiven();
+      photoNote.hidden = !consentGiven();
+    }
 
     async function loadPhotos() {
       try {
@@ -525,7 +598,9 @@ export default {
       void current.offsetWidth; // restart rather than skip
       current.classList.add(backwards ? 'step-in--back' : 'step-in');
 
-      if (steps[index] === stepPhotos) loadPhotos();
+      if (steps[index] === stepPhotos) {
+        loadConsent().then(loadPhotos);
+      }
 
       stepLabel.textContent = `Step ${index + 1} of ${steps.length}`;
       bar.style.width = `${((index + 1) / steps.length) * 100}%`;

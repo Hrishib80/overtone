@@ -13,7 +13,11 @@ const PUBLIC_ROUTES = new Set(['/', '/join', '/signin']);
 /* Routes an account may visit besides its home. Onboarding stays a funnel —
    these are the places you can only get to once you are through it. */
 const ALSO_ALLOWED = {
-  active: new Set(['/inbox']),
+  active: new Set(['/inbox', '/settings']),
+  // Settings is reachable mid-onboarding too, because withdrawing consent and
+  // deleting the account are things a half-finished profile must be able to
+  // do — being stuck inside a funnel is not a reason to lose that.
+  onboarding: new Set(['/settings']),
 };
 
 class Router {
