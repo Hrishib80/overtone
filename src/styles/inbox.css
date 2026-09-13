@@ -215,8 +215,16 @@
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   padding-block: var(--s-1) var(--s-3);
+  /* Bleeds to the screen edge so a card can scroll off it, but its contents
+     keep the page gutter. */
   margin-inline: calc(var(--s-4) * -1);
   padding-inline: var(--s-4);
+  /* Without this the gutter is a lie. A mandatory snap aligns the first
+     card's edge to the *scrollport* edge, not the padding edge, so the
+     browser scrolls 16px on load and the first card ends up flush against
+     the screen while every other element on the page is indented. Measured:
+     scrollLeft was 16 before this line existed. */
+  scroll-padding-inline: var(--s-4);
   scrollbar-width: thin;
 }
 
@@ -634,6 +642,9 @@
   align-items: center;
   gap: var(--s-3);
   padding-bottom: var(--s-3);
+  /* Clears the sheet's own close button, which is absolutely positioned over
+     this corner. See the note on .revealed__bar. */
+  padding-right: var(--sheet-close-clearance);
   border-bottom: 1px solid var(--rule);
 }
 
@@ -833,9 +844,20 @@
   color: var(--ink);
 }
 
+/* The close button is 32px inset by --s-3, and it is positioned over the
+   panel rather than laid out in it — so anything else pushed to the top-right
+   lands underneath it. Measured before this existed: the block/report control
+   and the close button overlapped by 8px in both axes at every width, which
+   on a *safety* control is the worst possible place for an ambiguous tap.
+   Somebody aiming to close a profile could block the person instead. */
+:root {
+  --sheet-close-clearance: calc(32px + var(--s-3) + var(--s-2));
+}
+
 .revealed__bar {
   display: flex;
   justify-content: flex-end;
+  padding-right: var(--sheet-close-clearance);
   margin-bottom: calc(var(--s-3) * -1);
 }
 

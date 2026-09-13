@@ -82,7 +82,7 @@ export default {
     const stage = createElement('main', { className: 'pairs__stage' });
 
     const foot = createElement('footer', { className: 'pairs__foot' });
-    const inboxLink = createElement('button', { className: 'pairs__inbox', type: 'button' }, 'your people');
+    const inboxLink = createElement('button', { className: 'pairs__inbox', type: 'button' }, 'my type');
     const inboxDot = createElement('span', { className: 'pairs__badge', hidden: 'hidden' });
     inboxLink.append(inboxDot);
     inboxLink.addEventListener('click', () => router.go('/inbox'));
@@ -110,7 +110,7 @@ export default {
     async function checkInbox() {
       try {
         const inbox = await api.getInbox();
-        const waiting = inbox.requests.length + inbox.unlocked.length;
+        const waiting = inbox.requests.length + inbox.unlocked.length + inbox.admirers.length;
         inboxDot.hidden = waiting === 0;
       } catch {
         inboxDot.hidden = true; // never let a badge be the reason a page errors
@@ -173,7 +173,7 @@ export default {
 
       const later = createElement('button', { className: 'btn btn--ghost btn--full', type: 'button' }, 'Later');
       later.addEventListener('click', () => {
-        say('They are waiting in Your people, whenever you want.');
+        say('They are waiting in My type, whenever you want.');
         load();
       });
 

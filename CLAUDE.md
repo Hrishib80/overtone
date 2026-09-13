@@ -12,7 +12,7 @@ making architectural changes.
 
 ## Current state
 
-Phases 00–04 are complete, phase 05 is under way. **379 tests passing**, lint clean,
+Phases 00–04 are complete, phase 05 is under way. **390 tests passing**, lint clean,
 migration round-trips, frontend builds, and the whole loop — pair, unlock,
 request, reply — has been driven end to end in a browser at phone and laptop
 width.
@@ -76,7 +76,7 @@ silently makes the whole mechanic impossible for whoever is on the short side
 — twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
-pytest                       # 379 tests, no network, no models needed
+pytest                       # 390 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
 python scripts/manage.py reviewer --email you@example.com   # open the review queue
 python scripts/check_storage.py  # why uploads are or are not working
@@ -175,6 +175,45 @@ chance out of a pool of hundreds, does not happen. Half the time
 (`RE_EXPOSURE_RATE`) the anchor is drawn from this viewer's live hypotheses —
 people picked at least once whose record has not resolved. The other half keeps
 the pool from collapsing to whoever they liked first.
+
+### Being chosen
+
+The app always knew who a viewer kept picking. It never told the person being
+picked, so being chosen was something that happened to you rather than
+something you could act on. `admirers` is that half: the people who unlocked
+*you*, their profiles in full, and a way to write back.
+
+**This was a deliberate reversal of a recorded decision, and the cost is worth
+naming.** Until now an unlock was private to the person who made it — they
+could sit on it, and the other person never knew. That privacy is gone: unlock
+somebody and they can see you did. The upside is that the loop no longer
+depends on the sender being the one brave enough to write; the downside is
+that "I keep choosing them but I'm not ready to say so" is no longer a state
+the product supports. If that turns out to matter, the seam is a flag on
+`Affinity` and a `.where()` in `admirer_ids`.
+
+**Writing to somebody who chose you opens the conversation outright**, with no
+request. They declared first; answering is not a thing they need to approve a
+second time. `send_request` now accepts an unlock in *either* direction, and
+the existing `mutual` branch already does the right thing once it is let
+through — that is the whole change.
+
+**The share is withheld below `MIN_AUDIENCE_FOR_SHARE`.** One keen person out
+of three is "33%", which reads like it means a lot and means nothing. Below
+the floor the API sends `share: null` and the UI must not invent a number —
+the same objection the Wilson interval answers for the unlock, in its blunt
+form, because this number is shown to a person rather than used to decide
+anything.
+
+**The denominator is the audience, not the fan club.** Everyone with a decided
+comparison, not everyone who unlocked you — dividing admirers by admirers is
+100% for everybody, forever.
+
+**This is the closest the app comes to showing somebody a rating**, and it is
+worth being honest that it is close. What keeps it on the right side of the
+line: it is about *you*, shown only to *you*, it is a count of people rather
+than a score, and it is never comparative — there is no rank, no "better than
+80% of users", and no way to see anybody else's. Do not add one.
 
 ### Message requests
 
@@ -747,6 +786,20 @@ Each of these cost real debugging time. Do not reintroduce them.
 - **Supabase's transaction pooler (pgbouncer) breaks asyncpg's prepared
   statement cache.** `settings.db_connect_args` disables it when it sees a
   pooler host. Removing that makes every query after the first fail.
+- **A mandatory scroll-snap eats its own container's padding.** `.deck` has a
+  negative margin and matching padding so cards can scroll to the screen edge
+  while their contents keep the page gutter — but `scroll-snap-type: x
+  mandatory` aligns the first card to the *scrollport* edge, so the browser
+  scrolled 16px on load and the first card sat flush against the screen while
+  every other element was indented. `scroll-padding-inline` is the fix;
+  measured `scrollLeft: 16` is how it was found, because it looks like a
+  design choice rather than a bug.
+- **The sheet's close button is positioned over its own contents.** It is
+  absolute at the top-right of the panel, so anything else pushed right in the
+  first row lands under it — the block/report control overlapped it by 8px in
+  both axes at every width, which on a safety control means a tap meant for
+  "close" could block somebody. Anything in that row needs
+  `--sheet-close-clearance`.
 - **`[hidden]` is beaten by any author `display` rule.** `.stack { display:flex }`
   silently un-hid every step of the onboarding form. `base.css` forces
   `[hidden] { display: none !important }`.
@@ -1014,7 +1067,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 379 and rising; every bug found gets a regression
+- **Tests are the contract.** 390 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.
@@ -1035,7 +1088,7 @@ an action or introduces content; nothing here loops or decorates.
   | `screening.py` (pure) | — | what to do about what the detectors found |
   | `rating.py` (pure) | — | Glicko-2 and the Wilson interval, no database |
   | `rating_service.py` | — | the only thing touching both maths and SQL |
-  | `affinity.py` | — | the unlock: counts, classification, permanence |
+  | `affinity.py` | — | the unlock, both directions: counts, classification, permanence |
   | `preference.py` | — | the online face model and its tilt |
   | `profile_view.py` | — | the two serializers, shared by pairs and inbox |
   | `safety.py` | `safety.py` | blocking and reporting — one file, not enough of either for two |

@@ -40,7 +40,7 @@ export default {
     const back = createElement('button', { className: 'inbox__back', type: 'button' });
     back.innerHTML = '<span aria-hidden="true">&larr;</span> Pairs';
     back.addEventListener('click', () => router.go('/pairs'));
-    headInner.append(back, createElement('h1', { className: 'inbox__title' }, 'Your people'));
+    headInner.append(back, createElement('h1', { className: 'inbox__title' }, 'My type'));
     head.append(headInner);
 
     const body = createElement('main', { className: 'inbox__body' });
@@ -265,7 +265,7 @@ export default {
 
     // ---- a revealed profile, and the one message it buys ------------------
 
-    function openProfile(subject) {
+    function openProfile(subject, { admirer = false } = {}) {
       openSheet({
         label: subject.display_name || 'Profile',
         build: ({ close }) => {
@@ -298,14 +298,20 @@ export default {
           const send = createElement(
             'button',
             { className: 'btn btn--full compose__send', type: 'submit' },
-            'Send one message'
+            admirer ? 'Start talking' : 'Send one message'
           );
 
+          // Writing to somebody who already chose you is not a request —
+          // they declared first, so answering opens the conversation outright
+          // and the copy has to say the true thing rather than the cautious
+          // one, or the button under-sells what pressing it does.
           form.append(
             createElement(
               'p',
               { className: 'compose__note' },
-              'You get one message. They reply, and then you can talk properly.'
+              admirer
+                ? 'They already chose you, so this opens the conversation straight away.'
+                : 'You get one message. They reply, and then you can talk properly.'
             ),
             input,
             send
@@ -389,7 +395,7 @@ export default {
       return card;
     }
 
-    function deckCard(subject) {
+    function deckCard(subject, { admirer = false } = {}) {
       const card = createElement('button', { className: 'card', type: 'button' });
 
       const photo = subject.photos?.[0];
@@ -406,7 +412,7 @@ export default {
       if (subject.age) caption.append(createElement('span', { className: 'card__age' }, `${subject.age}`));
 
       card.append(createElement('div', { className: 'card__veil' }), caption);
-      card.addEventListener('click', () => openProfile(subject));
+      card.addEventListener('click', () => openProfile(subject, { admirer }));
       return card;
     }
 
@@ -438,6 +444,32 @@ export default {
       );
       row.addEventListener('click', () => openThread(entry));
       return row;
+    }
+
+    /* The share, in words, or nothing.
+
+       Nothing is the important case: below a floor a percentage is noise
+       wearing a percent sign — one keen person out of three is "33%", which
+       reads like it means a lot and means nothing. The server decides where
+       that floor is and sends `share: null` below it, so this only has to
+       know not to invent a number. */
+    function reachNote(reach, shown) {
+      if (!reach || !reach.admirers) return null;
+
+      const head =
+        reach.share === null
+          ? `${reach.admirers} ${reach.admirers === 1 ? 'person keeps' : 'people keep'} choosing you. Too few people have compared you to put a percentage on it yet.`
+          : `${reach.share}% of the ${reach.seen_by} people who have compared you keep choosing you.`;
+
+      // The badge counts the cards below it and the sentence counts everyone,
+      // so when somebody is already in a conversation the two disagree — and
+      // a number that disagrees with the thing under it reads as a bug rather
+      // than as a distinction. Say where the difference went.
+      const talking = reach.admirers - shown;
+      if (talking > 0) {
+        return `${head} You're already talking to ${talking} of them.`;
+      }
+      return head;
     }
 
     function emptyState() {
@@ -484,6 +516,16 @@ export default {
       if (inbox.requests.length) {
         const wrap = section('Waiting on you', null, { count: inbox.requests.length });
         for (const entry of inbox.requests) wrap.append(requestCard(entry));
+        groups.push(wrap);
+      }
+
+      if (inbox.admirers.length) {
+        const wrap = section('They keep choosing you', reachNote(inbox.reach, inbox.admirers.length), {
+          count: inbox.admirers.length,
+        });
+        const deck = createElement('div', { className: 'deck' });
+        for (const subject of inbox.admirers) deck.append(deckCard(subject, { admirer: true }));
+        wrap.append(deck);
         groups.push(wrap);
       }
 

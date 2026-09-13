@@ -22,7 +22,13 @@ from typing import Any
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.affinity import is_unlocked, unlocked_subject_ids
+from backend.affinity import (
+    admirer_ids,
+    audience,
+    is_unlocked,
+    share_of,
+    unlocked_subject_ids,
+)
 from backend.database import (
     ChatMessage,
     ChatStatus,
@@ -134,7 +140,18 @@ async def send_request(
     # share, and it is the thing that turns a block into a provocation.
     if await is_blocked(db, sender.id, recipient_id):
         raise NotAuthorized("You can't reach that person.")
-    if not await is_unlocked(db, sender.id, recipient_id):
+    # Either direction earns the message. Unlocking them is the original
+    # route; *them* having unlocked you is the new one, and it is the same
+    # fact from the other side — somebody has already declared certainty
+    # about this pair, so there is no case where nobody has chosen anybody.
+    #
+    # Writing back to someone who chose you opens the conversation outright
+    # rather than sending a request: the `mutual` branch below already does
+    # that, and it is right here for the same reason. They asked by choosing;
+    # answering is not a thing they need to approve a second time.
+    if not await is_unlocked(db, sender.id, recipient_id) and not await is_unlocked(
+        db, recipient_id, sender.id
+    ):
         raise NotAuthorized("You haven't unlocked that person yet.")
 
     body = _clean(text)
@@ -280,12 +297,16 @@ async def peer_card(db: AsyncSession, user_id: str) -> dict[str, Any]:
 
 
 async def inbox(db: AsyncSession, user: User) -> dict[str, Any]:
-    """Everything this person currently has in play, in four groups.
+    """Everything this person currently has in play, in five groups.
 
     `unlocked` is the one that has no counterpart in a swipe app: people whose
     profiles are open to this viewer and who have not been written to yet. It
     is a prompt, not a match list — the viewer has decided, and the other
     person still knows nothing about it.
+
+    `admirers` is its mirror, and it is the newer idea: people who keep
+    choosing *this* person. Seeing them is what turns being chosen into
+    something you can act on rather than something that happens to you.
     """
     # Declined connections are fetched too, and then left out of every
     # group. They still have to be *known*: a declined peer must not fall back
@@ -370,8 +391,27 @@ async def inbox(db: AsyncSession, user: User) -> dict[str, Any]:
         if subject_id not in connected_peers and subject_id not in separated
     ]
 
+    # People who keep choosing this person, and have not been talked to yet.
+    # Anyone already in a conversation, a request or a decline is left out —
+    # they are further along than "interested", and showing them twice would
+    # make the inbox read as two inboxes.
+    admirers = [
+        await full_profile_view(db, viewer_id)
+        for viewer_id in await admirer_ids(db, user.id)
+        if viewer_id not in connected_peers and viewer_id not in separated
+    ]
+
+    admirer_count, seen_by = await audience(db, user.id)
     return {
         "unlocked": unlocked,
+        "admirers": admirers,
+        "reach": {
+            # The totals rather than the filtered list: somebody with four
+            # admirers, three of whom they are already talking to, has four.
+            "admirers": admirer_count,
+            "seen_by": seen_by,
+            "share": share_of(admirer_count, seen_by),
+        },
         "requests": incoming,
         "sent": sent,
         "conversations": conversations,

@@ -20,7 +20,7 @@ and a message may be sent — under the same rule that keeps ratings private.
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import Affinity, AffinityState, utcnow
@@ -156,6 +156,69 @@ async def unlocked_subject_ids(db: AsyncSession, viewer_id: str) -> list[str]:
         .scalars()
         .all()
     )
+
+
+# Below this many viewers, a share is noise wearing a percent sign. Three
+# people and one of them keen is "33%", which is a sentence that means nothing
+# and reads like it means a lot. It is the same objection the Wilson interval
+# answers for the unlock itself; this is the blunt version of it, because the
+# number here is shown to a person rather than used to decide anything.
+MIN_AUDIENCE_FOR_SHARE = 10
+
+
+async def admirer_ids(db: AsyncSession, subject_id: str) -> list[str]:
+    """Everyone who has unlocked *this* person — the inbound direction.
+
+    The mirror of `unlocked_subject_ids`, and worth keeping separate rather
+    than adding a flag: every other caller in the app means "people I chose",
+    and a boolean that silently reverses a query about who is interested in
+    whom is the kind of argument that gets passed wrong once.
+    """
+    return list(
+        (
+            await db.execute(
+                select(Affinity.viewer_id)
+                .where(Affinity.subject_id == subject_id)
+                .where(Affinity.state == AffinityState.unlocked)
+                .order_by(Affinity.unlocked_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def audience(db: AsyncSession, subject_id: str) -> tuple[int, int]:
+    """How many people have actually compared this person, and how many of
+    them kept choosing them. `(admirers, seen_by)`.
+
+    `seen_by` counts viewers with at least one decided comparison, not
+    everyone the pair loop could theoretically show them to — a person who has
+    never been put in front of anybody has an audience of nought, not a
+    hundred, and the share has to say so.
+    """
+    seen_by = int(
+        await db.scalar(
+            select(func.count(Affinity.id)).where(Affinity.subject_id == subject_id).where(Affinity.shown > 0)
+        )
+        or 0
+    )
+    admirers = int(
+        await db.scalar(
+            select(func.count(Affinity.id))
+            .where(Affinity.subject_id == subject_id)
+            .where(Affinity.state == AffinityState.unlocked)
+        )
+        or 0
+    )
+    return admirers, seen_by
+
+
+def share_of(admirers: int, seen_by: int) -> int | None:
+    """The percentage, or None when there is not enough behind it to say."""
+    if seen_by < MIN_AUDIENCE_FOR_SHARE:
+        return None
+    return round(admirers / seen_by * 100)
 
 
 async def is_unlocked(db: AsyncSession, viewer_id: str, subject_id: str) -> bool:
