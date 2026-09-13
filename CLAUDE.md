@@ -12,27 +12,37 @@ making architectural changes.
 
 ## Current state
 
-Phases 00–04 are complete, phase 05 is under way. **355 tests passing**, lint clean,
-migration round-trips, frontend builds, and the whole loop — pair, unlock,
-request, reply — has been driven end to end in a browser at phone and laptop
-width.
+Phases 00–06 are complete; phase 07 — calibration and launch — is what is
+left. **355 tests passing**, lint clean, migration round-trips, frontend
+builds, and the whole loop — pair, unlock, request, reply — has been driven
+end to end in a browser at phone and laptop width.
+
+Email verification is **gone**, and so is every notification: an account is
+active the moment it is created, and the only way anybody learns they have a
+message is a count on the navbar. Both were traded deliberately — see
+*No email, anywhere* and *The shape of the app* below.
 
 ```
-97fc571  Phase 04: the unlock and the inbox, on screen
-368ad2c  Phase 04: the online preference model
-9f298fd  Phase 04: message requests, and the end of the swipe-era match model
-607c822  Phase 04: the unlock — affinity, Wilson gates and deliberate re-exposure
-acb6c03  Add CLAUDE.md: project memory across sessions
-1b0e95e  Phase 03: the pair view, plus the periodic sweeps
-8b03b1b  Test the pair API over HTTP; share the job-drain and onboard helpers
-4536e3d  Phase 03: the pair loop — schema, ratings, generation, serve/decide, API
-209a285  Phase 03: Glicko-2 rating engine
-1f1128c  Wire the frontend to real uploads; pin the Sarvam model
-79d8643  Phase 02: uploads, job queue, worker and the model layer
-0432137  Frontend: rebuild on the two-pole design system, responsive
-a4fb2a4  Phase 01: identity, profile, prompts and campus access
-1dc4684  Phase 00: foundation for the pairwise rework
-f895bcc  Baseline: prototype as inherited, before the pairwise rework
+76c5a0f  Profile and messages, laid out properly — and a scrim that actually works
+b31584d  A navbar, and My type split from Keep choosing you
+50a2f79  Say what is waiting, on the only way out of the pair view
+3641c4c  Show people who keeps choosing them, and let them answer
+fc05d90  Tell people when somebody has written to them
+e3fd64c  Sweep every screen for text nobody can read
+4094c69  New mark: two circles, overlapping
+857d14f  Make the landing ground follow the theme
+12d72a8  Phase 06: a landing page that is the mechanic
+380c2bb  Phase 05: automatic photo screening, held for a human
+bf21aa2  Phase 05: live chat, and one write path for a message
+b273e43  Fix the moderation migration against a table that has rows
+6599d62  Phase 05: the review queue, and suspension
+18bc01d  Phase 05: biometric consent, and erasure that erases
+1769984  Fix Continue on the photo step
+ad20285  Make photo edits survive an object that has already gone
+574c6d3  Recognise both generations of Supabase key
+01edc07  Add a storage diagnostic, and stop leaving the dev server misconfigured
+4f1f271  Fix photo upload, and give the photos rules
+aee72c3  Open signup: remove the campus layer
 ```
 
 ### Architecture reference
@@ -67,6 +77,13 @@ python -m uvicorn backend.app:app --port 8000     # API
 npx vite --port 5173                              # frontend
 python worker.py                                  # background jobs (optional locally)
 ```
+
+`MEDIA_ROOT` defaults to the **relative** path `media_uploads`, so it resolves
+against whatever directory uvicorn was started from. Start the API somewhere
+else and the demo portraits are still on disk but the app is looking in an
+empty folder — every pair renders as two blank tiles, which reads as a broken
+feature rather than a wrong path. Start it from the repo root, or set
+`MEDIA_ROOT` absolutely.
 
 Demo accounts: `ravi@demo.edu`, `aditi@demo.edu`, … password `overtone2026`.
 Ten women and ten men, deliberately balanced: an unlock costs seven
@@ -386,29 +403,14 @@ That was a real trade and the cost is worth stating plainly. The campus domain
 was the identity anchor — it bounded the population to people who genuinely
 belonged somewhere, and it made ban evasion expensive, because coming back
 meant obtaining another university mailbox. A personal account removes both.
-What carries that weight now: email verification, the 18+ check, blocking,
-reporting and rate limits. **If ban evasion becomes a real problem the answer
-is phone verification or invite codes, not bringing the domain back** — the
+What carries that weight now: the 18+ check, blocking, reporting, the review
+queue and rate limits. **If ban evasion becomes a real problem the answer is
+phone verification or invite codes, not bringing the domain back** — the
 domain only ever worked because a second university mailbox is hard to get.
 
-**Email verification still matters, and now it is the whole gate.** A domain
-check proved the person knew the domain; the link proves they can read mail at
-the address they gave. So: the token is returned in the API response **only**
-when nothing was actually delivered (`mail.delivers()` is false), and
-production **refuses to start** on the console mailer, because in that mode
-every signup mints a token that reaches nobody.
-
-**`/verify` is public whenever the URL carries a token.** The link is its own
-credential and is usually opened on a different device from the one that
-registered — the laptop signs up, the phone reads the mail. The token is
-scrubbed from the address bar once spent.
-
-**SMTP, not one vendor's HTTP API** — the single interface SES, Postmark,
-Resend, Mailgun, Workspace and a university relay all speak. **Delivery runs
-through the job queue**, so a provider briefly down costs a retry rather than
-an account nobody can verify. **Resend answers identically for an address that
-does not exist**, because "does this person have an account" is a question
-about somebody's private life.
+Email verification used to be named here as carrying part of that weight. It
+does not any more — it is gone entirely, and *No email, anywhere* above is the
+honest account of what that costs.
 
 **There is no population boundary at all.** Every active account is in one
 pool. The seam where one would go back is a single `.where(...)` in
@@ -640,48 +642,19 @@ Approving sets it, returns the photo to `uploaded` and re-enqueues the job —
 the worker elects the primary and embeds, because that is where the model
 lives.
 
-### Reaching somebody who is not looking
+### Presence, and a column nothing reads
 
-Nothing used to leave the building except a verification link. Somebody spent
-seven comparisons unlocking a person, spent their one opening message, and the
-recipient found out whenever they next happened to open the inbox. For a loop
-that turns entirely on the other person answering, that is the hole that
-empties it.
+`users.last_active_at` is written from `current_user` rather than only at
+login, at most once per five minutes (`ACTIVITY_RESOLUTION`) — people stay
+signed in for weeks, so "last seen" taken from the last sign-in would have
+said somebody reading their inbox right now was last here on Tuesday.
 
-**Two emails exist, and only two** — a request arrived, and a request was
-answered. Those are the moments where one person is waiting on another;
-everything else is discoverable by opening the app. There is deliberately **no
-email per message** in an open conversation: the socket already delivers those
-to anyone with the thread open, and mailing the rest trains people to filter
-us, which costs the two that matter.
-
-**The email never carries the message.** Somebody wrote one careful thing to
-one person, and it is not ours to copy into a mailbox that may be read at a
-desk, on a shared laptop, or over a shoulder. The sender's first name and a
-link. No photo, for the same reason.
-
-**Nothing is sent to somebody who is already here.** `QUIET_AFTER` is fifteen
-minutes; an email that arrives while you are looking at the thing it describes
-is the kind that gets a sending domain blocked. That rule is why
-`last_active_at` is now written from `current_user` rather than only at login
-— people stay signed in for weeks, and "last seen" taken from the last
-sign-in would have said somebody reading their inbox right now was last here
-on Tuesday. It is written at most once per five minutes
-(`ACTIVITY_RESOLUTION`), because nothing needs it accurate to the second and a
-write per read is a real cost.
-
-**Unsubscribing works from inside the email, with no login.** The people most
-likely to want out are the least likely to still have an account they can get
-into, and a preference reachable only behind a sign-in is a reason to press
-"spam" instead — which costs the sending domain far more than the unsubscribe
-would have. The link is an HMAC over the user id and never expires; an
-unsubscribe link that has gone stale is a complaint. The endpoint answers
-identically whether or not the account exists, so it cannot be used to find
-out which addresses are registered.
-
-**The page acts on arrival rather than asking to confirm.** The person already
-decided, in their mail client. Making them decide twice is how an unsubscribe
-becomes a spam report.
+**It exists for a reason that no longer does.** It was there to suppress email
+to somebody already in the app, and there is no email. Nothing reads the column
+today — grep it and the only hits are the write and the schema. Two honest
+options: drop it, or keep it as the seam for presence in chat, which is the
+obvious next thing to want and the one thing it is already shaped for. It is
+kept, at the cost of a write per session per five minutes, on that bet.
 
 ### Identity model
 
@@ -1036,9 +1009,12 @@ Still open:
   hundred real profile photos through NudeNet and looked at what got held.
   Expect the hold rate to be the first thing that needs tuning, and expect it
   to be too high rather than too low.
-- **No push, only email.** The two moments that matter now leave the building
-  (`backend/notify.py`); a phone notification is a separate piece of work and
-  a separate consent.
+- **Nothing reaches somebody who is not in the app.** No email, no push: a
+  request waits until the recipient next opens Overtone and sees the count in
+  the bar. That is the deliberate trade (*No email, anywhere*), and it is also
+  the single biggest risk to a loop that turns on the other person answering.
+  Watch how long requests sit unanswered — if the median is days, this is why,
+  and push with its own consent is the answer rather than putting mail back.
 - **Nothing tells a reporter what happened.** Deliberate for now (see the note
   in `safety.py` about why an outcome is not disclosed), but "a person reads
   every report" is a claim the reporter currently has to take on faith.
@@ -1050,8 +1026,8 @@ reasoning above), and every surface now shares the sky, the contrast rule and
 the motion conventions below.
 
 Every screen has now been walked in both themes by
-`scripts/check_contrast.py`, and the one remaining failure is the deliberate
-one above.
+`scripts/check_contrast.py`. The three remaining failures are all the same
+deliberate one — the landing display type, above.
 
 Still open:
 - **Nobody has seen this on a real phone.** It is verified at 320, 390 and
@@ -1059,6 +1035,10 @@ Still open:
 - **The audit only judges text.** Icon-only buttons, focus rings, the borders
   that carry state on a card — none of those are checked, and 1.4.11 applies
   to them at 3:1.
+- **It cannot judge anything over a photograph.** Text on a scrim is reported
+  as unjudged, and staying unjudged is correct — but it means the card
+  captions are held by a measurement written into a comment rather than by
+  anything that runs. Re-measure if the veil is ever touched.
 
 **Motion conventions, now that there are some.** Entrances are 260–440ms on
 `cubic-bezier(0.22, 1, 0.36, 1)`, staggered 40–70ms per item via a `.rise`
@@ -1077,14 +1057,11 @@ an action or introduces content; nothing here loops or decorates.
 - Load test, runbook, closed beta, campus unlock.
 
 ### Known gaps in what's built
-- **Nothing proves a person is still enrolled.** The gate is a mailbox at the
-  campus domain, checked once at signup. Alumni addresses often live on, and
-  nothing re-checks later. A periodic re-verification is the obvious answer and
-  does not exist.
-- **Mail is unconfigured out of the box.** `MAIL_PROVIDER=console` is the
-  default and delivers nothing; set `smtp` and the SMTP_* variables before
-  deploying. The app refuses to start in production without it, so this fails
-  loudly rather than silently.
+- **Nothing proves anything about who somebody is.** Not enrolment, not the
+  address, not that they are a different person from the account banned last
+  week. The campus domain went first and the verification link went after it;
+  what is left is the 18+ self-declaration and the safety surfaces. This is
+  the largest known hole in the product and it is a deliberate one.
 - **Queue refill is on-demand**, not a batch worker job. Fine at campus scale;
   `generate_one_pair` is the building block when it isn't.
 - **Round-2 pairings only surface after 48–72h** in real use — pull `due_at`
@@ -1098,10 +1075,9 @@ an action or introduces content; nothing here loops or decorates.
   different database from the one each test builds. `tests/test_live.py`
   covers the bus and the publish contract instead; the access check itself is
   only exercised by hand. Fix when the socket next changes shape.
-- **Still nothing on a phone.** Email covers the two moments that matter
-  (`backend/notify.py`), but there is no push, so a request reaching somebody
-  who does not read mail promptly still waits for them to open the app.
-- **`/inbox` holds the thread in page state, not the URL**, so a conversation
+- **`users.last_active_at` is written and never read.** Kept as the seam for
+  presence in chat; see *Presence, and a column nothing reads*.
+- **`/messages` holds the thread in page state, not the URL**, so a conversation
   cannot be linked to or restored by reload. The router matches exact paths and
   has no params; add them when a second surface needs them. Profiles and
   threads open in a sheet (`src/components/sheet.js`) rather than a route for
@@ -1155,9 +1131,9 @@ an action or introduces content; nothing here loops or decorates.
   | Domain | HTTP | What lives there |
   |---|---|---|
   | `pairing.py` | `pairs.py` | generation, serve/decide, round scheduling |
-  | `connections.py` | `inbox.py` | requests, replies, declines, the inbox |
+  | `connections.py` | `inbox.py` | requests, replies, declines, the inbox — and `admirers`, which the HTTP name gives no hint of |
   | `bus.py` | `signaling.py` | fan-out between processes; the chat socket |
-  | `notify.py` | `account.py` | which emails go out, and the unsubscribe |
+  | `privacy.py` | `account.py` | consent, withdrawal and erasure |
   | `screening.py` (pure) | — | what to do about what the detectors found |
   | `rating.py` (pure) | — | Glicko-2 and the Wilson interval, no database |
   | `rating_service.py` | — | the only thing touching both maths and SQL |
