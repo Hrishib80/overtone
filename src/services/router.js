@@ -49,6 +49,12 @@ class Router {
   redirectFor(path) {
     const { token, me } = store.getState();
 
+    // A verification link carries its own credential and is very often opened
+    // on a different device from the one that registered — the laptop signs
+    // up, the phone reads the email. Redirecting that to the landing page
+    // would make the link useless for most of the people who click it.
+    if (path === '/verify' && new URLSearchParams(location.search).has('token')) return null;
+
     if (!token) return PUBLIC_ROUTES.has(path) ? null : '/';
     if (!me) return null; // still loading; app.js resolves before starting
 

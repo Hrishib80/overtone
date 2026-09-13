@@ -254,3 +254,53 @@ async def test_an_unverified_account_still_cannot_be_active(client, db_sessionma
             .all()
         )
     assert len(outstanding) == 1
+
+
+# ---------------------------------------------------------------------------
+# How the message goes out on the wire
+# ---------------------------------------------------------------------------
+
+
+def _rendered(display_name):
+    import email as email_mod
+    from email import policy as email_policy
+
+    raw = mail._build(
+        mail.verification_message(to="s@campus.edu", token=TOKEN, display_name=display_name)
+    ).as_string()
+    parsed = email_mod.message_from_string(raw, policy=email_policy.default)
+    return raw, parsed
+
+
+TOKEN = "RJD-qjpzlBCeAS5RyVPEQ3-pZCoFtQH0r9XawaP_ERQ"
+
+
+def test_the_link_survives_a_name_in_any_script():
+    """The case this is really for. A pure-ASCII body goes out untouched; one
+    non-ASCII character anywhere flips the whole body to an encoded form, and
+    on this campus a Telugu or accented name is the common case rather than
+    the exotic one."""
+    for name in ("Ada", "José", "హర్ష"):
+        _raw, parsed = _rendered(name)
+        assert TOKEN in parsed.get_content(), name
+
+
+def test_an_ascii_message_stays_readable_on_the_wire():
+    """Worth keeping: a raw message somebody can read is a signup failure
+    somebody can debug."""
+    raw, parsed = _rendered("Ada")
+    assert parsed.get("Content-Transfer-Encoding") == "7bit"
+    assert TOKEN in raw
+
+
+def test_a_non_ascii_message_avoids_quoted_printable():
+    """Quoted-printable is the one encoding that puts a soft break inside a
+    long URL. Reversible, but it means the raw source shows a split link."""
+    _raw, parsed = _rendered("హర్ష")
+    assert parsed.get("Content-Transfer-Encoding") == "base64"
+
+
+def test_no_body_line_exceeds_the_smtp_limit():
+    for name in ("Ada", "హర్ష"):
+        raw, _parsed = _rendered(name)
+        assert max(len(line) for line in raw.splitlines()) <= mail.MAX_LINE

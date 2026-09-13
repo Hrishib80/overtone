@@ -27,6 +27,7 @@ from __future__ import annotations
 import smtplib
 import ssl
 from dataclasses import dataclass
+from email import policy
 from email.message import EmailMessage
 
 import anyio
@@ -72,12 +73,40 @@ def check_configuration() -> None:
         )
 
 
+# RFC 5321's line limit, rather than the 78 the default policy wraps at.
+MAX_LINE = 998
+_POLICY = policy.SMTP.clone(max_line_length=MAX_LINE)
+
+
 def _build(message: Message) -> EmailMessage:
-    msg = EmailMessage()
+    """Assemble the message, keeping the verification link on one line.
+
+    Python's default policy wraps the body at 78 columns as quoted-printable,
+    which puts a soft break inside a long URL. That break *is* reversible —
+    every compliant client rejoins it before display, and the link works — so
+    this is not fixing a broken link. It is avoiding a URL that arrives
+    visibly split in anything that reads the raw source: a mail gateway
+    logging the body, a plain-text-only viewer, somebody pasting from "show
+    original" while debugging a signup that failed for a different reason.
+
+    Which encoding is used depends on the body, and one detail is worth
+    knowing: a pure-ASCII body goes out as 7bit untouched, while a single
+    non-ASCII character anywhere — an accented or Telugu name in the greeting
+    — flips the whole body to an encoded form. On this campus that is the
+    common case, not the exotic one, so the non-ASCII path uses base64, which
+    wraps its own encoding rather than the text inside it.
+    """
+    msg = EmailMessage(policy=_POLICY)
     msg["From"] = settings.mail_from
     msg["To"] = message.to
     msg["Subject"] = message.subject
-    msg.set_content(message.text)
+
+    try:
+        message.text.encode("ascii")
+    except UnicodeEncodeError:
+        msg.set_content(message.text, cte="base64")
+    else:
+        msg.set_content(message.text)
     return msg
 
 
@@ -128,7 +157,7 @@ def verification_message(*, to: str, token: str, display_name: str | None = None
             "Confirm this is your campus address to finish joining Overtone:\n\n"
             f"{link}\n\n"
             "The link works once and expires in 24 hours.\n\n"
-            "If you didn't ask for this, you can ignore it — nothing happens "
+            "If you didn't ask for this, you can ignore it. Nothing happens "
             "until the link is opened.\n"
         ),
     )

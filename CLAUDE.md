@@ -275,6 +275,12 @@ quietly stops being sent.
 campus, "does this person have an Overtone account" is a question about
 somebody's private life.
 
+**`/verify` is a public route whenever the URL carries a token.** The link is
+its own credential and is very often opened on a different device from the one
+that registered — the laptop signs up, the phone reads the mail. Requiring a
+session there would make the link useless for most of the people who click it.
+The token is scrubbed from the address bar once spent.
+
 ### Safety
 
 **A block is stored one way and read both ways.** Who blocked whom is worth
@@ -458,6 +464,13 @@ Each of these cost real debugging time. Do not reintroduce them.
 - **Red is the decline colour.** It is also `.btn`'s default background, so any
   new positive call-to-action arrives red unless told otherwise. The unlock and
   the composer are explicitly blue.
+- **A white card on a sky-inked page must set `color: var(--ink)`.** The page
+  sets white ink for the ground; a card that does not take its ink back gets
+  white headings on white. It is invisible rather than wrong-looking, so it
+  survives a glance — `.status__card` shipped like that until the verification
+  screen was photographed. `scratchpad/contrast.py` walks a page and flags any
+  text under 2:1 against what is behind it (it cannot read gradients, so the
+  landing page reports false positives).
 - **Accent fills need `--on-accent`, not `#fff`.** The palette inverts between
   themes — dark red becomes light red — so hardcoded white heads for
   white-on-pale in dark mode.

@@ -70,6 +70,10 @@ class Api {
     return this.request('POST', '/api/auth/verify-email', { token });
   }
 
+  resendVerification(email) {
+    return this.request('POST', '/api/auth/resend-verification', { email });
+  }
+
   login(email, password) {
     return this.request('POST', '/api/auth/login', { email, password });
   }

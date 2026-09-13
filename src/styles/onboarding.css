@@ -258,6 +258,10 @@
   border-radius: var(--radius-lg);
   padding: var(--s-7) var(--s-5);
   box-shadow: var(--shadow-lift);
+  /* The page around it is white-on-sky. A white card has to take its ink
+     back, or headings inherit white and vanish — which is exactly what
+     happened to "That's confirmed" on the verification screen. */
+  color: var(--ink);
 }
 
 .status__blot {
