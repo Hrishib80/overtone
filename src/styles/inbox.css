@@ -43,11 +43,13 @@
   gap: var(--s-4);
 }
 
+/* 20px bold needs 3:1 and white on the sky is 2.1:1. Only the pair view's
+   47px heading is big enough to carry white. */
 .inbox__title {
   font-size: var(--t-1);
   font-weight: 800;
   letter-spacing: -0.03em;
-  color: var(--on-sky);
+  color: var(--on-sky-soft);
 }
 
 .inbox__back {

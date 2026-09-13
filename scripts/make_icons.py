@@ -53,13 +53,15 @@ def main() -> int:
     for name, (size, source) in PNG_SIZES.items():
         image = Image.open(source).convert("RGBA")
         image.resize((size, size), Image.LANCZOS).save(OUT / name, optimize=True)
-        print(f"  {name:<16} {size:>4}px from {source.name:<28} {(OUT / name).stat().st_size / 1024:>6.1f} KB")
+        kb = (OUT / name).stat().st_size / 1024
+        print(f"  {name:<16} {size:>4}px from {source.name:<28} {kb:>6.1f} KB")
 
     # Pillow takes the largest requested size from whatever it is handed, so
     # downscale once first rather than asking it to fit 1024px into 48.
     small = Image.open(SMALL).convert("RGBA")
     small.resize((64, 64), Image.LANCZOS).save(OUT / "favicon.ico", sizes=ICO_SIZES)
-    print(f"  {'favicon.ico':<16} {'16/32/48':>8} from {SMALL.name:<28} {(OUT / 'favicon.ico').stat().st_size / 1024:>6.1f} KB")
+    kb = (OUT / "favicon.ico").stat().st_size / 1024
+    print(f"  {'favicon.ico':<16} {'16/32/48':>8} from {SMALL.name:<28} {kb:>6.1f} KB")
     return 0
 
 

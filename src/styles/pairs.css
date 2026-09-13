@@ -27,12 +27,15 @@
 
 /* Small, quiet, and out of the way — it is a signature on the corner of the
    page, not a masthead. */
+/* The deep pole, not white. At 17px this is a label, and white on the sky is
+   2.0:1 — the display voice below is the exception, not the rule the whole
+   header follows. The opacity is gone too: it was spending contrast a second
+   time on the smallest thing in the block. */
 .pairs__mark {
   font-size: var(--t-0);
   font-weight: 300;
   letter-spacing: -0.02em;
-  color: var(--on-sky);
-  opacity: 0.92;
+  color: var(--on-sky-soft);
 }
 
 .pairs__mark b {
@@ -56,10 +59,13 @@
   font-weight: 800;
 }
 
+/* This is the line that tells somebody what to do, and it was 17px of
+   300-weight white at 2.0:1 — the least readable text on the screen carrying
+   the most necessary sentence on it. Size and weight cannot carry white here
+   the way they do for the heading above. */
 .pairs__sub {
   margin-top: var(--s-2);
-  color: var(--on-sky);
-  opacity: 0.92;
+  color: var(--on-sky-soft);
   font-size: var(--t-0);
   font-weight: 300;
   min-height: 1.4em; /* reserve the line so the layout doesn't jump */

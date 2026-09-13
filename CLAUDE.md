@@ -80,6 +80,7 @@ pytest                       # 366 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
 python scripts/manage.py reviewer --email you@example.com   # open the review queue
 python scripts/check_storage.py  # why uploads are or are not working
+python scripts/check_contrast.py --token "<jwt>"   # text nobody can read, both themes
 ruff check . && ruff format --check .
 alembic check                # fails if models drifted from migrations
 python worker.py --status    # which models this process would use (free, offline)
@@ -234,11 +235,19 @@ click away on either side, so it reads as a pause in the middle of the brand
 rather than a gap in it. Do not "fix" this for consistency; it was tried on the
 sky and taken back off.
 
-**White is the display voice only.** White on the sky is **2.1:1** and fails
-every contrast threshold, so it is used for the heading and its single
-supporting line, where size and weight carry it. Anything small enough that it
-has to be read takes `--on-sky-soft` — the deep pole, **5.5:1**. Both, plus a
-deep-navy `--sky`, are redefined for dark mode.
+**White is the display voice, and it is now exactly one element.** White on
+the sky is **2.1:1** and fails every threshold there is, so `.pairs__title` —
+the 47px "Which man?" — is the only text in the app allowed to use it, where
+size and weight carry it and nobody has to read it twice. Everything else
+takes `--on-sky-soft`, the deep pole, at **5.5:1**. Both, plus a deep-navy
+`--sky`, are redefined for dark mode.
+
+That rule used to say "the heading *and its single supporting line*", and the
+supporting line was the bug: "pick the one you prefer" was 17px of 300-weight
+white at 2.0:1 — the least readable text on the screen carrying the most
+necessary sentence on it. Three page titles had drifted the same way at 20px.
+An exception written loosely enough to include a second case will collect a
+fourth; `scripts/check_contrast.py` is the thing that keeps it at one.
 
 **The heading names what it is showing** — "Which woman?", "Which man?",
 "Which person?" — from `segment` on the pair response. That is the viewer's
@@ -752,6 +761,12 @@ Each of these cost real debugging time. Do not reintroduce them.
   recorder button, the error toast), so grep for `color: #fff` before
   believing it is gone. White *is* right over a fixed dark scrim like
   `rgba(11, 20, 32, 0.82)`, which does not invert — that is the only case.
+- **Dark mode was fine; light mode was not.** Sweeping every screen in both
+  themes turned up nine unreadable elements and *all nine were in light* —
+  white on the sky at 2.1:1, which dark mode fixes for free because the ground
+  goes navy and white becomes 15:1. The instinct to check dark and assume
+  light is the safe one has it exactly backwards for a palette built on a pale
+  brand colour.
 - **A gradient written in hex does not follow the theme.** The landing ground
   was `radial-gradient(…, #b4d8f6, var(--sky), #5b9cd4)` — one token and two
   literals. In dark mode the middle flipped to navy and the two ends stayed
@@ -864,13 +879,16 @@ Done: the **landing page** is art-directed around the mechanic itself (see the
 reasoning above), and every surface now shares the sky, the contrast rule and
 the motion conventions below.
 
+Every screen has now been walked in both themes by
+`scripts/check_contrast.py`, and the one remaining failure is the deliberate
+one above.
+
 Still open:
 - **Nobody has seen this on a real phone.** It is verified at 320, 390 and
   1440 in Chromium, which is not the same as a mid-range Android in daylight.
-- **Only the landing page and the auth panel have been checked in dark
-  mode.** They were both broken there until they were looked at, which is the
-  argument for looking at the rest: pairs, inbox, onboarding, settings and
-  review have never been rendered in dark at all.
+- **The audit only judges text.** Icon-only buttons, focus rings, the borders
+  that carry state on a card — none of those are checked, and 1.4.11 applies
+  to them at 3:1.
 
 **Motion conventions, now that there are some.** Entrances are 260–440ms on
 `cubic-bezier(0.22, 1, 0.36, 1)`, staggered 40–70ms per item via a `.rise`

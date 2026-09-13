@@ -47,7 +47,7 @@
 .settings__title {
   margin: 0;
   font-size: var(--t-1);
-  color: var(--on-sky);
+  color: var(--on-sky-soft);
   letter-spacing: -0.02em;
 }
 
