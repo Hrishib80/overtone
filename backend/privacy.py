@@ -27,6 +27,7 @@ The cascades stay as a backstop. This is the thing that actually runs.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import delete, or_, select
@@ -86,7 +87,12 @@ async def current_consent(db: AsyncSession, user_id: str) -> BiometricConsent | 
                 select(BiometricConsent)
                 .where(BiometricConsent.user_id == user_id)
                 .where(BiometricConsent.withdrawn_at.is_(None))
-                .order_by(BiometricConsent.granted_at.desc())
+                # `id` is a secondary sort rather than decoration. Two grants
+                # can land on the same `granted_at` — see `grant()` — and an
+                # ordering with no tiebreak lets the database return either
+                # row, which is how this picked the *older* notice version
+                # about one time in twenty.
+                .order_by(BiometricConsent.granted_at.desc(), BiometricConsent.id.desc())
                 .limit(1)
             )
         )
@@ -111,10 +117,30 @@ async def grant(db: AsyncSession, user_id: str) -> BiometricConsent:
     if existing is not None and existing.notice_version == NOTICE_VERSION:
         return existing
 
+    # Strictly after the grant it replaces, even when the clock says otherwise.
+    #
+    # `granted_at` is what `current_consent` orders by, and on Windows the
+    # system clock is coarser than the gap between two calls here — so a
+    # re-grant after a notice change landed on the *same* timestamp as the
+    # grant it superseded about 5% of the time. With no tiebreak the database
+    # was free to return either, and when it returned the older row the app
+    # reported `needs_restatement` forever and, worse, answered "which words
+    # did this person agree to" with the wrong version. That record is the
+    # entire reason this table exists.
+    #
+    # A microsecond is added rather than a schema column, and it is honest:
+    # the timestamp was never accurate to the microsecond anyway, and this
+    # only orders two events whose real order is already known — this row is
+    # being written because that one exists.
+    now = utcnow()
+    if existing is not None and existing.granted_at is not None and now <= existing.granted_at:
+        now = existing.granted_at + timedelta(microseconds=1)
+
     row = BiometricConsent(
         user_id=user_id,
         purpose=BIOMETRIC_PURPOSE,
         notice_version=NOTICE_VERSION,
+        granted_at=now,
     )
     db.add(row)
     await db.flush()

@@ -40,6 +40,7 @@ from backend.database import (
     User,
     ViewerPreference,
     pair_key,
+    utcnow,
 )
 from tests.conftest import (
     TEST_DOMAIN,
@@ -433,3 +434,47 @@ async def test_guessing_the_password_runs_out(client, _a_life):
         codes.add(response.status_code)
 
     assert 429 in codes
+
+
+@pytest.mark.asyncio
+async def test_a_regrant_wins_even_when_the_clock_cannot_tell_them_apart(
+    client, verified, db_sessionmaker, monkeypatch
+):
+    """Two grants on the same timestamp, and the newer one still has to win.
+
+    `current_consent` orders by `granted_at`, and on Windows the system clock
+    is coarser than the gap between a grant and the re-grant that follows a
+    notice change — so the two landed on the *same* microsecond about one time
+    in twenty. With no tiebreak the database was free to return either row,
+    and when it returned the older one the app asked somebody to re-agree to a
+    notice they had just agreed to, and answered "which words did they agree
+    to" with the wrong version. That record is why this table exists.
+
+    The clock is frozen here rather than raced, because a bug that shows up 5%
+    of the time is one that passes CI and reaches production. This is the
+    version of the test that fails every time if the fix is removed.
+    """
+    frozen = utcnow()
+    monkeypatch.setattr(privacy, "utcnow", lambda: frozen)
+
+    await give_consent(client, verified["headers"])
+    monkeypatch.setattr(privacy, "NOTICE_VERSION", "2027-04-1")
+    await give_consent(client, verified["headers"])
+
+    async with db_sessionmaker() as db:
+        rows = (
+            (
+                await db.execute(
+                    select(privacy.BiometricConsent).where(privacy.BiometricConsent.user_id == _uid(verified))
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(rows) == 2, "the old grant is kept, not edited"
+
+    # Both were written against a clock that could not separate them, so the
+    # ordering has to come from somewhere other than luck.
+    live = (await client.get("/api/account/consent", headers=verified["headers"])).json()
+    assert live["agreed_version"] == "2027-04-1"
+    assert live["needs_restatement"] is False

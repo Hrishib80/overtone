@@ -807,6 +807,27 @@ Each of these cost real debugging time. Do not reintroduce them.
 - **`sorted()` on `(distance, Candidate)` tuples crashes on an exact tie** — it
   falls through to comparing `Candidate`, which has no ordering. Always pass an
   explicit `key=`.
+- **`order_by(timestamp)` with no tiebreak is the `sorted()` tie bug again,
+  and the clock is coarser than you think.** `current_consent` ordered by
+  `granted_at DESC` alone. A grant and the re-grant that follows a notice
+  change are about a millisecond apart, which on Windows is inside one tick of
+  the system clock — so the two rows landed on the *same* microsecond about
+  **5% of the time**, and the database was then free to return either. When it
+  returned the older one the app reported `needs_restatement` forever and
+  answered "which words did this person agree to" with the wrong version,
+  which is the one question the table exists to answer.
+
+  Two fixes, because either alone leaves a hole: `grant()` now writes a
+  timestamp strictly after the row it supersedes, and the ordering carries
+  `id DESC` as a deterministic secondary sort. Reproduced at 16/300 before and
+  0/300 after.
+
+  **It surfaced as a flaky test, and nearly got dismissed as one.** It failed
+  once in a full run, passed on its own, passed on the next two full runs. A
+  test that fails 5% of the time passes CI and reaches production; the tell is
+  that "flaky" and "there is an ordering here with no tiebreak" are the same
+  sentence. The regression test freezes the clock so the tie happens every
+  time rather than being raced for.
 - **SQLite returns naive datetimes; Postgres returns aware ones.** The
   `UTCDateTime` type in `backend/database.py` normalises both directions. Every
   timestamp column must use it, or comparisons raise on one backend only.
