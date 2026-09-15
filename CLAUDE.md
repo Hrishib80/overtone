@@ -451,6 +451,12 @@ admin` (which refuses an account that is not itself active), with no endpoint
 that can set it, and `/api/admin` answers 404 to everybody else. Reviewers
 answer reports about members; admins decide who becomes one.
 
+**A grant has to reach a tab that is already open.** The app reads the account
+once, on load, and staff access is granted from a shell while the person is
+signed in — so right after `manage.py admin`, `/admin` still bounced to the
+pair view until a reload, which reads exactly like the grant did not work. The
+router now re-reads the account before refusing `/admin` or `/review`.
+
 That was a real trade and the cost is worth stating plainly. The campus domain
 was the identity anchor — it bounded the population to people who genuinely
 belonged somewhere, and it made ban evasion expensive, because coming back

@@ -1,4 +1,5 @@
 import store from './store.js';
+import api from './api.js';
 
 /* Where an account belongs, given its status. Onboarding is a funnel: you
    cannot skip ahead, and you cannot fall back into a step you've finished. */
@@ -82,6 +83,20 @@ class Router {
   }
 
   async resolve(path) {
+    // Staff access is granted from the command line, usually while the person
+    // is already signed in — so the account this tab loaded may predate the
+    // grant, and `/admin` would bounce to the pair view until a reload. Before
+    // refusing a staff page, ask once more.
+    const { me, token } = store.getState();
+    const staffPage = (path === '/admin' && !me?.is_admin) || (path === '/review' && !me?.is_reviewer);
+    if (token && me && staffPage) {
+      try {
+        store.setState({ me: await api.getMe() });
+      } catch {
+        /* keep what we had; the redirect below decides */
+      }
+    }
+
     const redirect = this.redirectFor(path);
     if (redirect) {
       history.replaceState(null, '', redirect);
