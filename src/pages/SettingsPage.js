@@ -21,18 +21,25 @@ export default {
   async render() {
     const page = createElement('div', { className: 'settings' });
 
-    // Mid-onboarding there is no bar to show — the funnel has its own way
-    // out, and half a navigation is worse than none.
-    const onboarding = store.getState().me?.status === 'onboarding';
-    const nav = onboarding ? null : navbar('/settings');
+    // The member bar only for members. Mid-onboarding, waiting for approval
+    // or suspended there is nowhere in the bar they can go, and half a
+    // navigation is worse than none — each gets a way back to where they are.
+    const status = store.getState().me?.status;
+    const nav = status === 'active' ? navbar('/settings') : null;
     if (nav) reviewerLink(nav);
+    const BACK = {
+      onboarding: ['/onboarding', 'Your profile'],
+      waitlisted: ['/waitlist', 'The waitlist'],
+      suspended: ['/suspended', 'Back'],
+    };
 
     const head = createElement('header', { className: 'settings__head' });
     const headInner = createElement('div', { className: 'settings__head-inner' });
-    if (onboarding) {
+    if (BACK[status]) {
+      const [to, label] = BACK[status];
       const back = createElement('button', { className: 'settings__back', type: 'button' });
-      back.innerHTML = '<span aria-hidden="true">&larr;</span> Your profile';
-      back.addEventListener('click', () => router.go('/onboarding'));
+      back.append(createElement('span', { 'aria-hidden': 'true' }, '← '), label);
+      back.addEventListener('click', () => router.go(to));
       headInner.append(back);
     }
     headInner.append(createElement('h1', { className: 'settings__title' }, 'Settings'));
@@ -69,6 +76,55 @@ export default {
         "There's no email on Overtone, so a forgotten password can't be reset. Keep it somewhere safe."
       )
     );
+
+    // ---- inviting somebody -------------------------------------------------
+
+    /* Only for a member an admin let in — the server decides, and answers
+       `can_invite: false` for everybody else, so the card simply never
+       appears for them. It says what an invite does and what it costs: the
+       person skips the waitlist on your word, and you have a handful. */
+    const inviteCard = section('Invite someone');
+    inviteCard.hidden = true;
+
+    async function loadInvite() {
+      let invite;
+      try {
+        invite = await api.getInvite();
+      } catch {
+        return;
+      }
+      if (!invite.can_invite) return;
+
+      const left = Math.max(invite.limit - invite.used, 0);
+      inviteCard.append(
+        createElement(
+          'p',
+          { className: 'settings__lede' },
+          'Somebody who joins with your code skips the waitlist — you’re vouching for them.'
+        ),
+        createElement('p', { className: 'invite__code', 'aria-label': `Your code is ${invite.code.split('').join(' ')}` }, invite.code),
+        createElement(
+          'p',
+          { className: 'settings__muted' },
+          left ? `${left} of ${invite.limit} left.` : `All ${invite.limit} used.`
+        )
+      );
+
+      if (left) {
+        const copy = createElement('button', { className: 'btn btn--blue', type: 'button' }, 'Copy invite link');
+        copy.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(invite.link);
+            toast('Link copied.');
+          } catch {
+            // Clipboard access can be refused; the link itself is the fallback.
+            toast(invite.link);
+          }
+        });
+        inviteCard.append(copy);
+      }
+      inviteCard.hidden = false;
+    }
 
     // ---- blocked people --------------------------------------------------
 
@@ -277,11 +333,11 @@ export default {
 
     deleteCard.append(openDelete, deleteForm);
 
-    body.append(accountCard, blocksCard, consentCard, deleteCard);
+    body.append(accountCard, inviteCard, blocksCard, consentCard, deleteCard);
 
     page.mounted = () => {
       nav?.mounted();
-      return Promise.all([loadBlocks(), loadConsent()]);
+      return Promise.all([loadBlocks(), loadConsent(), loadInvite()]);
     };
     page.destroy = () => nav?.destroy();
     return page;

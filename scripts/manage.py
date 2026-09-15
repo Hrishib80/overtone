@@ -4,6 +4,8 @@
     python scripts/manage.py stats
     python scripts/manage.py reviewer --username someone
     python scripts/manage.py reviewer --username someone --revoke
+    python scripts/manage.py admin --username someone
+    python scripts/manage.py admin --username someone --revoke
 
 `seed` is idempotent — it upserts reference rows, so re-running after editing a
 seed file applies only what changed.
@@ -94,10 +96,42 @@ async def cmd_reviewer(args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_admin(args: argparse.Namespace) -> int:
+    """Grant or revoke the admin portal — the waitlist and who joins.
+
+    Only here, never over HTTP, for the same reason as reviewers: the account
+    that decides who gets onto the platform must not be grantable from any
+    surface an attacker could already hold a session on.
+    """
+    username = args.username.strip().lstrip("@").lower()
+    async with AsyncSessionLocal() as db:
+        user = (await db.execute(select(User).where(User.username == username))).scalars().first()
+        if user is None:
+            print(f"No account called {username}.", file=sys.stderr)
+            return 1
+        if not args.revoke and user.status != "active":
+            # An admin who is not yet a member themselves would be deciding
+            # who joins a platform they cannot see.
+            print(
+                f"@{username} is {user.status}, not active. Finish or approve that account first.",
+                file=sys.stderr,
+            )
+            return 1
+
+        user.is_admin = not args.revoke
+        await db.commit()
+
+    # ASCII only: this prints to a Windows console, where a dash arrives garbled.
+    verb = "no longer an admin" if args.revoke else "is now an admin. The portal is at /admin"
+    print(f"  @{username} {verb}")
+    return 0
+
+
 COMMANDS = {
     "seed": cmd_seed,
     "stats": cmd_stats,
     "reviewer": cmd_reviewer,
+    "admin": cmd_admin,
 }
 
 
@@ -113,6 +147,10 @@ def build_parser() -> argparse.ArgumentParser:
     reviewer = sub.add_parser("reviewer", help="grant or revoke the moderation queue")
     reviewer.add_argument("--username", required=True, help="the account to change")
     reviewer.add_argument("--revoke", action="store_true", help="take it away instead")
+
+    admin = sub.add_parser("admin", help="grant or revoke the admin portal (the waitlist)")
+    admin.add_argument("--username", required=True, help="the account to change")
+    admin.add_argument("--revoke", action="store_true", help="take it away instead")
 
     return parser
 

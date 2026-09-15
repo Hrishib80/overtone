@@ -76,6 +76,12 @@ class Settings(BaseSettings):
     # a URL an attacker can aim elsewhere.
     public_web_url: str = "http://localhost:5173"
 
+    # Whether a finished profile waits for an admin before it is shown to
+    # anyone. On by default; an invite code from an approved member skips the
+    # wait either way. Turning it off is how signup opens up again later without
+    # a code change.
+    require_approval: bool = True
+
     # Chat fan-out between workers. Unset means one process, which is the
     # right deployment at campus scale — see backend/bus.py for why that is a
     # supported mode rather than a missing feature.

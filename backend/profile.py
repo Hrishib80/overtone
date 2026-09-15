@@ -17,8 +17,9 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend import jobs, options
+from backend import invites, jobs, options
 from backend.auth import require_member
+from backend.config import settings
 from backend.database import (
     GenderIdentity,
     MediaAsset,
@@ -442,9 +443,14 @@ async def _completeness(db: AsyncSession, user: User, profile: Profile) -> dict[
 async def submit_profile(
     user: User = Depends(require_member), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
-    """Finish onboarding. A complete profile is a member — there is no cap to
-    clear, no queue to join, and no address to confirm."""
-    if user.status == UserStatus.active:
+    """Finish onboarding.
+
+    A complete profile joins the waitlist, where an admin approves it before it
+    is shown to anyone — unless it arrived on an invite code from a member who
+    can still vouch for it, in which case it is a member now. With approval
+    switched off (`REQUIRE_APPROVAL=false`) every complete profile is a member.
+    """
+    if user.status in (UserStatus.active, UserStatus.waitlisted):
         return {"status": user.status}
 
     profile = await _get_profile(db, user.id)
@@ -455,7 +461,39 @@ async def submit_profile(
             missing=completeness["missing"],
         )
 
-    user.status = UserStatus.active
+    now = utcnow()
+    if settings.require_approval and not await invites.vouched_for(db, user):
+        user.status = UserStatus.waitlisted
+        user.applied_at = now
+        user.application_note = None
+        log.info("user_waitlisted", user_id=user.id)
+    else:
+        user.status = UserStatus.active
+        user.approved_at = now
+        log.info("user_activated", user_id=user.id, via_invite=user.invited_by_id is not None)
     await db.commit()
-    log.info("user_activated", user_id=user.id)
+    return {"status": user.status}
+
+
+@router.post("/resubmit")
+async def resubmit_profile(
+    user: User = Depends(require_member), db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """Back into the queue after being sent back.
+
+    Only then: a profile that is simply waiting is already in the queue, and
+    resubmitting it would move it to the back for nothing. Checked for
+    completeness again, because the edit that answered the note may have
+    removed something else.
+    """
+    if user.status != UserStatus.waitlisted or not user.application_note:
+        raise AppError("There is nothing to resubmit.")
+    profile = await _get_profile(db, user.id)
+    completeness = await _completeness(db, user, profile)
+    if not completeness["complete"]:
+        raise AppError("Your profile isn't finished yet.", missing=completeness["missing"])
+    user.application_note = None
+    user.applied_at = utcnow()
+    await db.commit()
+    log.info("user_resubmitted", user_id=user.id)
     return {"status": user.status}

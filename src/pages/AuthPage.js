@@ -122,6 +122,40 @@ export function createAuthPage(mode) {
         );
       }
 
+      // Optional, and filled in from an invite link (`/join?invite=CODE`), so
+      // most people who have one never type it. Anyone without one joins the
+      // waitlist; the hint says so, rather than letting the wait be a surprise
+      // after the whole profile is written.
+      let invite;
+      let inviteHint;
+      if (joining) {
+        const fromLink = new URLSearchParams(window.location.search).get('invite') || '';
+        invite = createElement('input', {
+          className: 'input',
+          id: 'invite_code',
+          name: 'invite_code',
+          type: 'text',
+          autocomplete: 'off',
+          autocapitalize: 'characters',
+          spellcheck: 'false',
+          maxlength: '32',
+          placeholder: 'Optional',
+          value: fromLink,
+        });
+        inviteHint = createElement(
+          'p',
+          { className: 'hint' },
+          fromLink
+            ? 'A member invited you, so you’ll skip the waitlist.'
+            : 'Got a code from a member? You’ll skip the waitlist. Without one, a person looks at your profile before it goes live.'
+        );
+        invite.addEventListener('input', () => {
+          invite.removeAttribute('aria-invalid');
+          inviteHint.classList.remove('auth__status--bad');
+        });
+        form.append(field('Invite code', invite, inviteHint));
+      }
+
       form.append(
         field(
           'Password',
@@ -212,6 +246,7 @@ export function createAuthPage(mode) {
                 password: password.value,
                 displayName: name.value.trim(),
                 birthdate: birthdate.value,
+                inviteCode: invite.value.trim(),
               })
             : await api.login(username.value.trim(), password.value);
 
@@ -219,10 +254,15 @@ export function createAuthPage(mode) {
           await router.refresh(await api.getMe());
         } catch (error) {
           const onUsername = error.fields?.find((f) => f.field === 'username');
+          const onInvite = error.fields?.find((f) => f.field === 'invite_code');
           if (joining && onUsername) {
             // Said where the problem is, not only in a toast that disappears.
             setStatus(onUsername.message, 'bad');
             username.focus();
+          } else if (joining && onInvite) {
+            inviteHint.textContent = `${onInvite.message} Check it with whoever sent it, or leave it empty to join the waitlist.`;
+            inviteHint.classList.add('auth__status--bad');
+            invite.focus();
           } else {
             toast(error.message, { error: true });
           }

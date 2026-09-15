@@ -13,6 +13,11 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-not-used-anywhere-real")
 os.environ.setdefault("ALLOWED_ORIGINS", "*")
 os.environ.setdefault("LOG_LEVEL", "WARNING")
+# Approval off for the suite at large, so `onboard()` still yields a member the
+# way nearly every test needs. The waitlist itself is exercised with it on, in
+# tests/test_waitlist.py — which is the only place its absence would hide
+# anything, and which switches it back on explicitly.
+os.environ.setdefault("REQUIRE_APPROVAL", "false")
 
 from datetime import date  # noqa: E402
 
@@ -91,6 +96,28 @@ async def run_jobs(db_sessionmaker) -> int:
                 fresh = await db.get(jobs_module.Job, job.id)
                 await jobs_module.complete(db, fresh)
             total += 1
+
+
+def all_route_paths(app) -> list[str]:
+    """Every path the app serves, including those inside included routers.
+
+    FastAPI 0.141 keeps an included router as one `_IncludedRouter` entry in
+    `app.routes` instead of copying its routes up, so reading `app.routes`
+    directly sees only the top level — and a test asserting "no route mentions
+    X" over that list passes whatever routes exist. This walks into them.
+    """
+    paths: list[str] = []
+
+    def walk(routes):
+        for route in routes:
+            inner = getattr(route, "original_router", None)
+            if inner is not None:
+                walk(inner.routes)
+            else:
+                paths.append(getattr(route, "path", ""))
+
+    walk(app.routes)
+    return paths
 
 
 async def give_consent(client, headers):
@@ -179,16 +206,17 @@ async def register(
     *,
     birthdate: date = ADULT_BIRTHDATE,
     display_name: str = "Aditi",
+    invite_code: str | None = None,
 ) -> dict:
-    response = await client.post(
-        "/api/auth/register",
-        json={
-            "username": username,
-            "password": "a-strong-enough-password",
-            "display_name": display_name,
-            "birthdate": birthdate.isoformat(),
-        },
-    )
+    payload = {
+        "username": username,
+        "password": "a-strong-enough-password",
+        "display_name": display_name,
+        "birthdate": birthdate.isoformat(),
+    }
+    if invite_code is not None:
+        payload["invite_code"] = invite_code
+    response = await client.post("/api/auth/register", json=payload)
     assert response.status_code == 201, response.text
     body = response.json()
     body["headers"] = {"Authorization": f"Bearer {body['access_token']}"}
@@ -266,10 +294,12 @@ async def onboard(
     visible_as: list[str],
     interested_in: list[str],
     store: dict,
+    invite_code: str | None = None,
 ) -> dict:
     """Register, complete the profile, and submit — the full path from a
-    bare username to an account in the pool."""
-    account = await register_and_verify(client, username)
+    bare username to an account in the pool (or on the waitlist, when approval
+    is switched on and nobody vouched for it)."""
+    account = await register_and_verify(client, username, invite_code=invite_code)
     await complete_profile(
         client,
         account["headers"],

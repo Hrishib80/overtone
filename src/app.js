@@ -13,6 +13,8 @@ import ProfilePage from './pages/ProfilePage.js';
 import SettingsPage from './pages/SettingsPage.js';
 import ReviewPage from './pages/ReviewPage.js';
 import SuspendedPage from './pages/SuspendedPage.js';
+import WaitlistPage from './pages/WaitlistPage.js';
+import AdminPage from './pages/AdminPage.js';
 
 async function boot() {
   router.register({
@@ -28,6 +30,8 @@ async function boot() {
     '/settings': SettingsPage,
     '/review': ReviewPage,
     '/suspended': SuspendedPage,
+    '/waitlist': WaitlistPage,
+    '/admin': AdminPage,
   });
 
   // Resolve the account before the first render, so the router never has to

@@ -154,8 +154,19 @@ export function navbar(current) {
 /** The review queue is not in the bar — it is staff-only and would be a
     permanent empty tab for everybody else. It goes beside Sign out instead. */
 export function reviewerLink(nav) {
-  if (!store.getState().me?.is_reviewer) return;
-  const link = createElement('button', { className: 'nav__out', type: 'button' }, 'Review');
-  link.addEventListener('click', () => router.go('/review'));
-  nav.querySelector('.nav__inner').insertBefore(link, nav.querySelector('.nav__out'));
+  const me = store.getState().me;
+  const inner = nav.querySelector('.nav__inner');
+  const out = nav.querySelector('.nav__out');
+  if (me?.is_reviewer) {
+    const link = createElement('button', { className: 'nav__out', type: 'button' }, 'Review');
+    link.addEventListener('click', () => router.go('/review'));
+    inner.insertBefore(link, out);
+  }
+  // The admin portal sits here for the same reason the queue does: a tab in
+  // the bar would be an empty door for every member who is not staff.
+  if (me?.is_admin) {
+    const link = createElement('button', { className: 'nav__out', type: 'button' }, 'Admin');
+    link.addEventListener('click', () => router.go('/admin'));
+    inner.insertBefore(link, out);
+  }
 }

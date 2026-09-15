@@ -17,7 +17,7 @@ import pytest_asyncio
 from sqlalchemy import select
 
 from backend.database import MediaAsset, MediaStatus, Report, ReportStatus, User, UserStatus
-from tests.conftest import onboard, register_and_verify, run_jobs, upload_media
+from tests.conftest import all_route_paths, onboard, register_and_verify, run_jobs, upload_media
 
 
 async def _make_reviewer(db_sessionmaker, user_id: str) -> None:
@@ -78,7 +78,10 @@ async def test_nothing_over_http_can_make_a_reviewer(client, reported):
     from backend.app import create_app
 
     app = create_app()
-    paths = [getattr(route, "path", "") for route in app.routes]
+    paths = all_route_paths(app)
+    # Proves the walk reached inside the routers. Without it, this assertion
+    # passed with every route in the app invisible to it.
+    assert "/api/moderation/queue" in paths
     assert not any("reviewer" in path for path in paths)
 
     # And the field is not writable through the profile editor either.

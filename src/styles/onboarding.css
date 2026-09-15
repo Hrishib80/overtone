@@ -258,6 +258,49 @@
   margin-top: var(--s-2);
 }
 
+/* ---- Waitlist ------------------------------------------------------------ */
+
+/* The note an admin left, set apart and quoted, because it is somebody else's
+   words and the person reading it needs to know exactly what to change. */
+.waitlist__note {
+  margin: var(--s-4) 0 0;
+  padding: var(--s-3) var(--s-4);
+  border-left: 3px solid var(--red);
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  text-align: left;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.waitlist__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-top: var(--s-5);
+}
+
+.waitlist__foot {
+  margin: var(--s-5) 0 0;
+  font-size: var(--t--1);
+  color: var(--muted);
+}
+
+.waitlist__link {
+  border: 0;
+  background: none;
+  padding: var(--s-1);
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.status__card.waitlist > p + p {
+  margin-top: var(--s-3);
+}
+
 /* ---- Status screen ------------------------------------------------------ */
 
 .status {

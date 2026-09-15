@@ -16,6 +16,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend import storage
 from backend.account import router as account_router
+from backend.admin import router as admin_router
 from backend.auth import router as auth_router
 from backend.config import settings
 from backend.database import engine
@@ -137,6 +138,7 @@ def create_app() -> FastAPI:
     app.include_router(inbox_router)
     app.include_router(safety_router)
     app.include_router(moderation_router)
+    app.include_router(admin_router)
     app.include_router(signaling_router)
 
     @app.get("/api/health", include_in_schema=False)

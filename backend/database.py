@@ -123,6 +123,10 @@ async def get_db():
 class UserStatus(enum.StrEnum):
     pending_verification = "pending_verification"
     onboarding = "onboarding"
+    # A finished profile nobody has approved yet. Shown to no one and able to
+    # reach no one — everything that puts a person in front of another asks for
+    # `active` — until an admin approves it, or it arrives on an invite code.
+    waitlisted = "waitlisted"
     active = "active"
     # Removed from everyone else's experience, but still the owner of their
     # own data: a suspended account keeps its settings, its right to withdraw
@@ -235,6 +239,25 @@ class User(Base):
     # that sets this: the one account able to suspend other people must not be
     # reachable through the same surface an attacker already has a session on.
     is_reviewer = Column(Boolean, nullable=False, default=False)
+
+    # The same rule, for the one role that decides who joins at all: granted
+    # from the command line and nowhere else. See backend/admin.py.
+    is_admin = Column(Boolean, nullable=False, default=False)
+
+    # ---- joining -----------------------------------------------------------
+    # When the finished profile joined the waitlist. The queue is oldest first,
+    # and resubmitting after being sent back starts the wait again.
+    applied_at = Column(UTCDateTime(), nullable=True)
+    # What an admin asked to be changed. Set means "sent back": still
+    # waitlisted, out of the queue until they resubmit, which clears it.
+    application_note = Column(Text, nullable=True)
+    approved_at = Column(UTCDateTime(), nullable=True)
+    approved_by_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # This member's own code, made the first time they ask for it.
+    invite_code = Column(String, unique=True, index=True, nullable=True)
+    # Whose code let them in. An invited member skips the waitlist and cannot
+    # invite anybody in turn — see backend/invites.py.
+    invited_by_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     # Left from when a new request sent an email. Nothing sends one now and
     # nothing reads this; it stays only because dropping a column is a

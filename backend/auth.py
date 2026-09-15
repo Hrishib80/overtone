@@ -30,7 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend import access, usernames
+from backend import access, invites, usernames
 from backend.config import settings
 from backend.database import (
     Profile,
@@ -168,6 +168,9 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     display_name: str = Field(min_length=1, max_length=80)
     birthdate: date
+    # From a member an admin approved. Skips the waitlist once the profile is
+    # finished; see backend/invites.py for the limits on that.
+    invite_code: str | None = Field(default=None, max_length=32)
 
 
 class LoginRequest(BaseModel):
@@ -220,13 +223,20 @@ async def register(
     # Refuses before an account exists.
     access.check_age(req.birthdate)
 
+    # Checked before the account exists too: a code somebody typed on purpose
+    # that turns out not to work should be said, not quietly dropped into the
+    # waitlist they were trying to skip.
+    inviter = await invites.inviter_for(db, req.invite_code) if invites.normalise(req.invite_code) else None
+
     user = User(
         username=username,
         password_hash=hash_password(req.password),
         display_name=req.display_name.strip(),
         birthdate=req.birthdate,
-        # Straight into onboarding. There is nothing to wait for.
+        # Straight into onboarding. Any wait comes after the profile is
+        # finished, because an admin approves a profile, not an address.
         status=UserStatus.onboarding,
+        invited_by_id=inviter.id if inviter else None,
     )
     db.add(user)
     try:
@@ -290,4 +300,9 @@ async def get_me(user: User = Depends(current_user)) -> dict[str, object]:
         # So the app knows whether to offer the queue. It is a hint for the
         # interface only — every moderation route checks the column itself.
         "is_reviewer": user.is_reviewer,
+        "is_admin": user.is_admin,
+        # Only meaningful while waitlisted: set means an admin sent the profile
+        # back and this is what they asked to change.
+        "application_note": user.application_note,
+        "invited": user.invited_by_id is not None,
     }

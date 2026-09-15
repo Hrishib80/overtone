@@ -297,6 +297,18 @@ async def erase(db: AsyncSession, user: User) -> dict[str, Any]:
         report.reviewer_id = None
     removed["reviews_they_made_anonymised"] = len(reviewed)
 
+    # Invites and approvals they gave. The people they let in stay members —
+    # their accounts are their own — but no row keeps naming somebody who has
+    # gone. SQLite does not enforce the SET NULL on these foreign keys, so it
+    # is done here rather than trusted to the schema.
+    invited = (await db.execute(select(User).where(User.invited_by_id == user_id))).scalars().all()
+    for other in invited:
+        other.invited_by_id = None
+    approved = (await db.execute(select(User).where(User.approved_by_id == user_id))).scalars().all()
+    for other in approved:
+        other.approved_by_id = None
+    removed["invites_and_approvals_anonymised"] = len(invited) + len(approved)
+
     await db.delete(user)
     await db.flush()
     removed["users"] = 1

@@ -13,7 +13,7 @@ making architectural changes.
 ## Current state
 
 Phases 00–06 are complete; phase 07 — calibration and launch — is what is
-left. **422 tests passing**, lint clean, migration round-trips, frontend
+left. **438 tests passing**, lint clean, migration round-trips, frontend
 builds, and the whole loop — pair, unlock, request, reply — has been driven
 end to end in a browser at phone and laptop width.
 
@@ -94,9 +94,10 @@ silently makes the whole mechanic impossible for whoever is on the short side
 — twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
-pytest                       # 422 tests, no network, no models needed
+pytest                       # 438 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
 python scripts/manage.py reviewer --username you   # open the review queue
+python scripts/manage.py admin --username you      # open the admin portal (/admin)
 python scripts/check_storage.py  # why uploads are or are not working
 python scripts/check_contrast.py --token "<jwt>"   # text nobody can read, both themes
 python scripts/calibrate.py --sweep   # what the unlock dials cost, before real data
@@ -411,9 +412,44 @@ third column of the same blue.
 
 ### Joining
 
-**Anyone may join with any address.** The campus domain check is gone, and so
-are `Scope`, per-segment caps, the waitlist and the former-member hash. One
-pool, one rule: you have to be 18.
+**Anyone may join, and a person decides who goes live.** The campus domain
+check is gone, and so are `Scope`, per-segment caps and the former-member
+hash. One pool, one rule at the door: you have to be 18. Then a second rule,
+added after the first: a finished profile waits for an admin.
+
+**The waitlist is approval, not capacity.** An earlier waitlist existed to cap
+each segment and was removed with the campus layer. This one is different in
+kind — nobody waits for a slot, they wait for a person to look — and it was
+asked for explicitly. `onboarding → waitlisted → active`: `submit` puts a
+finished profile on the waitlist, an admin approves it in `/admin`, and
+approval is the whole gate, because everything that shows a person to anyone
+or lets them reach anyone already asks for `active` (`require_participant`,
+pair eligibility). There is no second list to keep in sync.
+`REQUIRE_APPROVAL=false` turns it off and every finished profile is a member
+again; the test suite runs with it off, and `test_waitlist.py` switches it on.
+
+**Sent back is still waitlisted.** An admin can ask for a change with a note.
+The person stays on the waitlist but out of the queue, reads the note word for
+word, edits in the ordinary profile editor (onboarding does not reload saved
+answers, so sending them back through it would hand them an empty form), and
+resubmits, which clears the note and starts the wait again. An admin can still
+approve from sent back — a note is a request, not a verdict.
+
+**Invite codes are the other door, and they are deliberately narrow.** A
+member an admin let in has a code; somebody who registers with it skips the
+waitlist. `backend/invites.py` holds three limits, each on how far one vouch
+reaches: only admin-approved members can invite (an invitee cannot invite in
+turn, or one approval becomes a chain); each has `INVITES_PER_MEMBER` (5),
+taken at *registration* so a code cannot be sprayed at fifty people hoping
+five finish; and the vouch is checked again at submit, so an inviter suspended
+in between vouches for nobody. Accounts already active before approval existed
+count as let in. The admin portal lists everybody who came in on a code and
+whose code it was, because this door skips the queue.
+
+**Admins are a separate flag from reviewers**, granted only by `manage.py
+admin` (which refuses an account that is not itself active), with no endpoint
+that can set it, and `/api/admin` answers 404 to everybody else. Reviewers
+answer reports about members; admins decide who becomes one.
 
 That was a real trade and the cost is worth stating plainly. The campus domain
 was the identity anchor — it bounded the population to people who genuinely
@@ -965,6 +1001,13 @@ Each of these cost real debugging time. Do not reintroduce them.
   `multiprocessing.spawn`, whose command line does not mention uvicorn, and it
   keeps port 8000 bound after its parent is gone. Find it by parent PID, stop
   it, and restart without `--reload`; after a backend change, restart by hand.
+- **Reading `app.routes` sees only the top level on this FastAPI.** 0.141
+  keeps each included router as one `_IncludedRouter` entry instead of copying
+  its routes up. `test_nothing_over_http_can_make_a_reviewer` collected paths
+  from `app.routes`, so "no route mentions reviewer" had been passing with every
+  real route invisible to it. `tests/conftest.all_route_paths` walks into
+  `original_router`, and both staff-grant tests now assert a known route is in
+  the list before asserting what is not.
 - **Log lines that format a field nothing guarantees any more.** Account
   erasure logged `email_domain=email.rsplit("@")[-1]`, which would have raised
   on the first account made without an email — so deleting your account
@@ -1411,7 +1454,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 422 and rising; every bug found gets a regression
+- **Tests are the contract.** 438 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.

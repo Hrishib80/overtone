@@ -176,32 +176,14 @@ async def read_queue(
     return {"subjects": out}
 
 
-@router.get("/subjects/{user_id}")
-async def read_subject(
-    user_id: str,
-    _: User = Depends(require_reviewer),
-    db: AsyncSession = Depends(get_db),
-) -> dict[str, Any]:
-    """Everything needed to decide, on one screen.
+async def staff_profile(db: AsyncSession, subject: User) -> dict[str, Any]:
+    """A person as staff see them: every photo that reached storage (held and
+    rejected included), every answer with its question, and the basics.
 
-    A reviewer who has to open four tabs to see what was reported makes worse
-    decisions than one who does not, so the photos, the answers, the reports
-    and the conversation they came from are all resolved here.
+    Shared by the review queue and the admin portal, so a reviewer judging a
+    report and an admin judging an application are looking at the same thing.
     """
-    subject = await db.get(User, user_id)
-    if subject is None:
-        raise NotFound("That account no longer exists.")
-
-    reports = (
-        (
-            await db.execute(
-                select(Report).where(Report.subject_id == user_id).order_by(Report.created_at.desc())
-            )
-        )
-        .scalars()
-        .all()
-    )
-
+    user_id = subject.id
     photos = (
         (
             await db.execute(
@@ -229,29 +211,6 @@ async def read_subject(
     ).all()
 
     profile = await db.get(Profile, user_id)
-
-    rendered_reports = []
-    for report in reports:
-        reporter = await db.get(User, report.reporter_id) if report.reporter_id else None
-        rendered_reports.append(
-            {
-                "id": report.id,
-                "reason": report.reason,
-                "note": report.note,
-                "status": report.status,
-                "created_at": report.created_at.isoformat() if report.created_at else None,
-                # A name, not just an id — a reviewer weighing four reports
-                # needs to see whether they are four people or one person
-                # four times.
-                "reporter": (
-                    {"id": reporter.id, "display_name": reporter.display_name} if reporter else None
-                ),
-                "about_photo": report.subject_media_id,
-                "about_prompt": report.subject_prompt_id,
-                "reviewer_note": report.reviewer_note,
-                "conversation": await _conversation(db, report),
-            }
-        )
 
     return {
         "user": {
@@ -293,6 +252,60 @@ async def read_subject(
             }
             for answer, prompt in answers
         ],
+    }
+
+
+@router.get("/subjects/{user_id}")
+async def read_subject(
+    user_id: str,
+    _: User = Depends(require_reviewer),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Everything needed to decide, on one screen.
+
+    A reviewer who has to open four tabs to see what was reported makes worse
+    decisions than one who does not, so the photos, the answers, the reports
+    and the conversation they came from are all resolved here.
+    """
+    subject = await db.get(User, user_id)
+    if subject is None:
+        raise NotFound("That account no longer exists.")
+
+    reports = (
+        (
+            await db.execute(
+                select(Report).where(Report.subject_id == user_id).order_by(Report.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    rendered_reports = []
+    for report in reports:
+        reporter = await db.get(User, report.reporter_id) if report.reporter_id else None
+        rendered_reports.append(
+            {
+                "id": report.id,
+                "reason": report.reason,
+                "note": report.note,
+                "status": report.status,
+                "created_at": report.created_at.isoformat() if report.created_at else None,
+                # A name, not just an id — a reviewer weighing four reports
+                # needs to see whether they are four people or one person
+                # four times.
+                "reporter": (
+                    {"id": reporter.id, "display_name": reporter.display_name} if reporter else None
+                ),
+                "about_photo": report.subject_media_id,
+                "about_prompt": report.subject_prompt_id,
+                "reviewer_note": report.reviewer_note,
+                "conversation": await _conversation(db, report),
+            }
+        )
+
+    return {
+        **await staff_profile(db, subject),
         "reports": rendered_reports,
     }
 

@@ -17,8 +17,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend import privacy
+from backend import invites, privacy
 from backend.auth import current_user, verify_password
+from backend.config import settings
 from backend.database import User, get_db
 from backend.errors import NotAuthorized
 from backend.logging_config import get_logger
@@ -26,6 +27,29 @@ from backend.ratelimit import CONFIRM_PASSWORD, consume
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/api/account", tags=["account"])
+
+
+@router.get("/invite")
+async def read_invite(
+    user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """This member's invite code and how many places are left on it.
+
+    The code is made here, the first time it is asked for, and only for
+    somebody who can invite — so a code never exists that could not work.
+    """
+    code = await invites.code_for(db, user)
+    if code is None:
+        return {"can_invite": False}
+    used = await invites.places_used(db, user.id)
+    await db.commit()
+    return {
+        "can_invite": True,
+        "code": code,
+        "link": f"{settings.public_web_url.rstrip('/')}/join?invite={code}",
+        "used": used,
+        "limit": invites.INVITES_PER_MEMBER,
+    }
 
 
 def _consent_view(row: privacy.BiometricConsent | None) -> dict[str, Any]:

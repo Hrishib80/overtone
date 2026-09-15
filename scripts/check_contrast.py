@@ -47,6 +47,7 @@ SCREENS = [
     ("profile", "/profile", True),
     ("settings", "/settings", True),
     ("review", "/review", True),
+    ("admin", "/admin", True),
 ]
 
 # Shared by every check below. The page is measured, not the stylesheet:
@@ -154,6 +155,11 @@ AUDIT = (
       alpha *= px(getComputedStyle(node).opacity || '1');
       node = node.parentElement;
     }
+    // Fully transparent is hidden, not faint: the photo report flag on a
+    // revealed profile sits at opacity 0 until hovered or focused, by design.
+    // Judging it at rest reported 1:1 for a control nobody is meant to see
+    // yet. Anything partly faded is still judged, faded.
+    if (alpha < 0.02) continue;
 
     const { bg, gradient } = behind(el, el);
     const label = nameOf(el);
@@ -351,6 +357,11 @@ async def walk(browser, base: str, token: str | None, scheme: str):
 
 
 async def main(base: str, token: str | None) -> int:
+    # Findings quote the page's own text, which can hold characters a Windows
+    # console codepage cannot print (the report control's flag is one). A
+    # finding must never be what crashes the audit that found it.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
     try:
         from playwright.async_api import async_playwright
     except ImportError:

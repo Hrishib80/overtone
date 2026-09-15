@@ -1,0 +1,105 @@
+/* The admin portal.
+
+   Built almost entirely from the review queue's working surface (review.css):
+   the same cards, photo strip and answer blocks, so staff see a person the same
+   way whichever question they are answering. What is here is only what the
+   review queue does not have — tabs, and the list of people who joined with a
+   code. */
+
+.admin__head {
+  justify-content: space-between;
+}
+
+.admin__tabs-wrap {
+  width: min(860px, 100%);
+  margin-inline: auto;
+  padding-inline: var(--s-5);
+}
+
+/* Scrolls rather than wraps, like the member navbar: three labels on a phone
+   are wider than the screen, and a second row of tabs reads as a second
+   level. */
+.admin__tabs {
+  display: flex;
+  gap: var(--s-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.admin__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.admin__tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3) var(--s-3);
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t--1);
+  font-weight: 600;
+  color: var(--on-sky-soft);
+  white-space: nowrap;
+}
+
+.admin__tab.is-here {
+  font-weight: 800;
+  box-shadow: inset 0 -2px 0 var(--on-sky-soft);
+}
+
+.admin__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding-inline: 6px;
+  border-radius: 10px;
+  background: var(--blue);
+  color: var(--on-accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Not a button here, unlike on the review screen where a photo is selected to
+   act on. Nothing is done to one photo from this page. */
+.admin__photo {
+  cursor: default;
+}
+
+.admin__sendback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.admin__invited-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-3) 0;
+  border-top: 1px solid var(--rule);
+}
+
+.admin__invited-row:first-child {
+  border-top: 0;
+}
+
+.admin__invited-name {
+  margin: 0;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.admin__invited-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-1);
+  flex: 0 0 auto;
+}

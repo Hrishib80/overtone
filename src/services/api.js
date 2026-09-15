@@ -57,12 +57,13 @@ class Api {
   }
 
   // ---- auth ----
-  register({ username, password, displayName, birthdate }) {
+  register({ username, password, displayName, birthdate, inviteCode }) {
     return this.request('POST', '/api/auth/register', {
       username,
       password,
       display_name: displayName,
       birthdate,
+      invite_code: inviteCode || null,
     });
   }
 
@@ -97,6 +98,10 @@ class Api {
 
   submitProfile() {
     return this.request('POST', '/api/profile/submit');
+  }
+
+  resubmitProfile() {
+    return this.request('POST', '/api/profile/resubmit');
   }
 
   // ---- pairs ----
@@ -142,6 +147,10 @@ class Api {
   }
 
   // ---- account ----
+  getInvite() {
+    return this.request('GET', '/api/account/invite');
+  }
+
   getConsent() {
     return this.request('GET', '/api/account/consent');
   }
@@ -206,6 +215,23 @@ class Api {
 
   reinstate(userId) {
     return this.request('POST', `/api/moderation/subjects/${userId}/reinstate`);
+  }
+
+  // ---- admin (admins only; the API answers 404 to everyone else) ----
+  getWaitlist() {
+    return this.request('GET', '/api/admin/waitlist');
+  }
+
+  getInvited() {
+    return this.request('GET', '/api/admin/invited');
+  }
+
+  approveApplicant(userId) {
+    return this.request('POST', `/api/admin/applicants/${userId}/approve`);
+  }
+
+  sendBackApplicant(userId, note) {
+    return this.request('POST', `/api/admin/applicants/${userId}/send-back`, { note });
   }
 }
 

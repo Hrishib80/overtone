@@ -2,6 +2,8 @@ import { createElement } from '../utils/dom.js';
 import { navbar, reviewerLink } from '../components/navbar.js';
 import { gateMessage, uploadFile } from '../services/upload.js';
 import api from '../services/api.js';
+import router from '../services/router.js';
+import store from '../services/store.js';
 import { toast } from '../utils/toast.js';
 
 /* Editing how you appear, after onboarding.
@@ -25,8 +27,12 @@ const MAX_PHOTOS = 3;
 
 export default {
   async render() {
-    const nav = navbar('/profile');
-    reviewerLink(nav);
+    // Waiting for approval, somebody edits their profile here too — it is
+    // how a profile sent back gets fixed — but the member bar would be a row
+    // of doors they cannot use, so they get a way back to the waitlist.
+    const member = store.getState().me?.status === 'active';
+    const nav = member ? navbar('/profile') : null;
+    if (nav) reviewerLink(nav);
 
     const page = createElement('div', { className: 'people' });
     const head = createElement('header', { className: 'people__head' });
@@ -35,7 +41,13 @@ export default {
       createElement('p', { className: 'people__lede' }, 'What other people see when a pair opens up.')
     );
     const body = createElement('main', { className: 'people__body people__body--stack' });
-    page.append(nav, head, body);
+    if (!member) {
+      const back = createElement('button', { className: 'settings__back', type: 'button' });
+      back.append(createElement('span', { 'aria-hidden': 'true' }, '← '), 'The waitlist');
+      back.addEventListener('click', () => router.go('/waitlist'));
+      head.prepend(back);
+    }
+    page.append(...(nav ? [nav] : []), head, body);
 
     let options = { gender_identities: [], sexualities: [], prompts: [], fields: {} };
     let profile = null;
@@ -388,10 +400,10 @@ export default {
     }
 
     page.mounted = () => {
-      nav.mounted();
+      nav?.mounted();
       load();
     };
-    page.destroy = () => nav.destroy();
+    page.destroy = () => nav?.destroy();
     return page;
   },
 };

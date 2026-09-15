@@ -9,6 +9,7 @@ const HOME_FOR_STATUS = {
      on the landing page with no way forward. */
   pending_verification: '/onboarding',
   onboarding: '/onboarding',
+  waitlisted: '/waitlist',
   active: '/pairs',
   suspended: '/suspended',
 };
@@ -19,7 +20,11 @@ const PUBLIC_ROUTES = new Set(['/', '/join', '/signin']);
    these are the places you can only get to once you are through it. */
 const ALSO_ALLOWED = {
   pending_verification: new Set(['/onboarding', '/settings']),
-  active: new Set(['/messages', '/type', '/chosen', '/profile', '/settings', '/review']),
+  active: new Set(['/messages', '/type', '/chosen', '/profile', '/settings', '/review', '/admin']),
+  // Waiting for approval: nothing that involves another person, but their own
+  // profile stays editable — a profile sent back is fixed from there — and so
+  // do settings.
+  waitlisted: new Set(['/profile', '/settings']),
   // Settings is reachable mid-onboarding too, because withdrawing consent and
   // deleting the account are things a half-finished profile must be able to
   // do — being stuck inside a funnel is not a reason to lose that.
@@ -70,6 +75,9 @@ class Router {
     // reads the column itself, so this only decides whether the page is worth
     // rendering, never whether the data comes back.
     if (path === '/review' && !me.is_reviewer) return home;
+    // The same for the admin portal: a hint, with `/api/admin` answering 404
+    // to anybody the column does not name.
+    if (path === '/admin' && !me.is_admin) return home;
     return ALSO_ALLOWED[me.status]?.has(path) ? null : home;
   }
 
