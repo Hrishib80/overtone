@@ -28,11 +28,18 @@ function field(label, input, hint) {
   return wrap;
 }
 
-/** Latest date of birth that is still 18 — used as the picker's max. */
+/** Latest date of birth that is still 18 — used as the picker's max.
+
+    Built from local date parts, not `toISOString()`. That converts to UTC, and
+    local midnight east of Greenwich is still the previous day in UTC — so in
+    India (UTC+5:30) the max came out one day early, every day, and somebody
+    turning 18 today could not pick their own birthday. The date input itself
+    works in local dates, so its max has to as well. */
 function eighteenYearsAgo() {
   const now = new Date();
   const d = new Date(now.getFullYear() - 18, now.getMonth(), now.getDate());
-  return d.toISOString().slice(0, 10);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export function createAuthPage(mode) {

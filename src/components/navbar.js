@@ -39,34 +39,55 @@ let cached = null;
 let inFlight = null;
 const mounted = new Set();
 
+/* Bumped whenever the counts stop being trustworthy: something changed them,
+   or the account did. A request started under an older generation may finish,
+   but it may not be cached and its answer may not be painted.
+
+   Without this the counts belonged to the tab rather than to the account.
+   Sign out and sign in as somebody else — no page reload happens either way —
+   and the second person's bar showed the first person's "Messages 1" until
+   something happened to refresh it. On a shared laptop that tells the next
+   person the last one has a message waiting. */
+let generation = 0;
+
 async function counts() {
+  if (!store.getState().token) return {};
   if (cached) return cached;
   if (!inFlight) {
-    inFlight = (async () => {
+    const asked = generation;
+    const request = (async () => {
       try {
         // Three integers from a dedicated endpoint, not a whole inbox. The
         // grouping rules live on the server for both, and a test pins the
         // cheap answer to the expensive one so they cannot drift.
         const n = await api.getCounts();
-        cached = { '/type': n.type, '/chosen': n.chosen, '/messages': n.messages };
+        const fresh = { '/type': n.type, '/chosen': n.chosen, '/messages': n.messages };
+        if (asked === generation) cached = fresh;
+        return fresh;
       } catch {
         // A bar that throws would take the page down with it. No counts is a
-        // worse bar, not a broken screen.
-        cached = {};
+        // worse bar, not a broken screen — but a failure is not cached, or one
+        // dropped request would blank the bar for the rest of the session.
+        return {};
       } finally {
-        inFlight = null;
+        if (inFlight === request) inFlight = null;
       }
-      return cached;
     })();
+    inFlight = request;
   }
   return inFlight;
 }
 
 /** Something changed the counts — drop them and repaint every live bar. */
 export function refreshNav() {
+  generation += 1;
   cached = null;
+  inFlight = null;
   for (const paint of mounted) paint();
 }
+
+// A different account, or none: nothing the bar knew is true any more.
+store.subscribe('token', () => refreshNav());
 
 export function navbar(current) {
   const nav = createElement('nav', { className: 'nav', 'aria-label': 'Main' });
@@ -106,7 +127,10 @@ export function navbar(current) {
   nav.append(inner);
 
   async function paint() {
+    const asked = generation;
     const n = await counts();
+    // Superseded while waiting — a newer paint is already on its way.
+    if (asked !== generation) return;
     for (const [path, badge] of badges) {
       const value = n[path] || 0;
       badge.textContent = value > 99 ? '99+' : String(value);

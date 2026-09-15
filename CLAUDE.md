@@ -13,7 +13,7 @@ making architectural changes.
 ## Current state
 
 Phases 00–06 are complete; phase 07 — calibration and launch — is what is
-left. **400 tests passing**, lint clean, migration round-trips, frontend
+left. **422 tests passing**, lint clean, migration round-trips, frontend
 builds, and the whole loop — pair, unlock, request, reply — has been driven
 end to end in a browser at phone and laptop width.
 
@@ -94,7 +94,7 @@ silently makes the whole mechanic impossible for whoever is on the short side
 — twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
-pytest                       # 400 tests, no network, no models needed
+pytest                       # 422 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
 python scripts/manage.py reviewer --username you   # open the review queue
 python scripts/check_storage.py  # why uploads are or are not working
@@ -533,6 +533,25 @@ deliberately **not** `auth` and `account`.
 thin evidence — or on good evidence, since the cost of being wrong is
 identical either way.
 
+**Suspension hides somebody from every surface, at read time.** For a while
+only pair generation honoured it: a suspended person still sat on other
+members' My type and Keep choosing you with a full profile, could still be sent
+a first message, stayed in other people's Messages where anybody could keep
+writing to them, and could hold a live socket. `safety.hidden_accounts` is now
+the one question all of those ask — inbox, counts, `reach`, `send_request`,
+`post_message`, `_is_participant`. Nothing is written into connection or
+affinity rows, deliberately: lifting a suspension has to put every surface back
+exactly as it was, and `test_suspension_reach.py` checks that half too.
+
+**An unfinished account cannot take part.** `require_member` only ever turned
+away *suspended* accounts, so an account still in onboarding passed it — and
+onboarding asks who you want to see before it asks for consent, a photo or a
+profile. Answer that and stop, and the pair view served real members' photos,
+unlocks worked, and messages could be sent. `require_participant` requires
+`active` on the pairs and inbox routers (on the router, so a new route cannot
+forget it). Profile, media and account stay on `require_member`, because they
+are the steps that finish joining.
+
 **A report can name one photo or one answer** (`subject_media_id`,
 `subject_prompt_id`), verified at write time to belong to the person being
 reported. A report attached to the wrong evidence would be worse than one
@@ -774,6 +793,21 @@ sizes at a campus are small, and it keeps SQLite and Postgres behaving
 identically in tests. Revisit around a few hundred thousand candidates in one
 pool — far past a single-campus launch.
 
+**A queued pair is checked again when it is served, by the same rule that
+generated it.** Round 2 is scheduled at every round-1 decision and arrives 48
+to 72 hours later with full profiles — and serving it used to trust that
+everybody eligible then was eligible now. So a block either way, a suspension,
+a consent withdrawal or a change of audience in between still revealed a full
+profile two days later, including to somebody who had blocked the person, and
+of somebody told in Settings that withdrawing means "you stop appearing in
+pairs". `_eligible` is the one filter both paths use; `still_showable` runs it
+for the two subjects in `next_pair` (outstanding, due round 2 and queued round
+1) and in `record_decision`, and a pair that fails is marked `withdrawn` rather
+than deleted. A decision on a pair that stopped being showable while it sat in
+an open tab is refused with 409, and the withdrawal is committed before the
+refusal, because the route rolls back on an error and a pair left `shown` would
+be served straight back.
+
 ### Infrastructure
 
 **Postgres-backed job queue, not Redis.** Jobs survive restarts and are
@@ -881,6 +915,42 @@ Each of these cost real debugging time. Do not reintroduce them.
   that "flaky" and "there is an ordering here with no tiebreak" are the same
   sentence. The regression test freezes the clock so the tie happens every
   time rather than being raced for.
+- **A call can outlive its definition, and nothing in the build notices.**
+  `requestCard` was dropped when the inbox became Messages while the line
+  calling it survived, so from then on anybody with a request waiting got a
+  blank Messages page (`requestCard is not defined`) at exactly the moment the
+  navbar told them to look. Vite does not check undefined names, there are no
+  frontend tests, and none of the accounts used in browser checks had a request
+  waiting. ESLint's `no-undef` over `src/` found it and found nothing else; it is
+  not a project dependency, so run it from a scratch folder (config:
+  `js.configs.recommended` with browser globals) after any rename or large
+  deletion in a page.
+- **A browser cannot tell a refused WebSocket from a dropped one.** The server
+  refuses a socket on an unanswered request by design, but a handshake refused
+  with 403 closes as 1006, the same as a network failure — so the client retried
+  it six times over about 44 seconds every time somebody opened a request. The
+  fix is on the client: join only a conversation that is open, and join again at
+  the moment this person's own reply opens it.
+- **A withdrawn vector is JSON `null` on SQLite, not SQL NULL.** `face_vector`
+  is pgvector on Postgres and JSON on SQLite, and SQLAlchemy stores Python
+  `None` into a JSON column as the text `null` — so `face_vector IS NOT NULL`
+  is true for somebody who withdrew consent, on every local database and in the
+  test suite, while production stores a real NULL. `_eligible_candidates`
+  always checked the vector in Python too, which is why it worked; the new
+  `still_showable` did not, and served round 2 of a withdrawn person until it
+  did. Any SQL null check on an embedding column needs the Python check beside
+  it.
+- **A module-level cache belongs to the tab, not the account.** Sign-out and
+  sign-in are both client-side navigations with no reload, so the navbar's
+  cached counts carried the first person's "Messages 1" into the next person's
+  bar. It now subscribes to the token and keys everything to a generation, so a
+  request started for one account can neither be cached nor painted for the
+  next. Any new cache of per-account data needs the same.
+- **`toISOString()` is the wrong day for a date input east of Greenwich.** It
+  converts to UTC, and local midnight in India is still the previous day in UTC,
+  so the join form's birthdate `max` was a day early every day there — somebody
+  turning 18 today could not pick their own birthday. A `<input type="date">`
+  works in local dates; build its bounds from `getFullYear/getMonth/getDate`.
 - **SQLite returns naive datetimes; Postgres returns aware ones.** The
   `UTCDateTime` type in `backend/database.py` normalises both directions. Every
   timestamp column must use it, or comparisons raise on one backend only.
@@ -1277,6 +1347,14 @@ an action or introduces content; nothing here loops or decorates.
   `tests/test_live.py` has the ASGI client and the reasoning.
 - **`users.last_active_at` is written and never read.** Kept as the seam for
   presence in chat; see *Presence, and a column nothing reads*.
+- **Old verification emails are still queued in the jobs table.** `send_email`
+  jobs from before the mail stack was removed have no handler, so the worker
+  retries each five times and parks it as failed — and each payload holds the
+  person's address and the verification text. `dev.db` has 16; the Supabase
+  database may have real ones. Erasure removes them per account (they carry
+  `subject_id`), but nothing removes them otherwise. Deleting the kind outright
+  is one statement and loses nothing that can still run; it is left as a
+  decision, like the addresses in `users.email`.
 - **`/messages` holds the thread in page state, not the URL**, so a conversation
   cannot be linked to or restored by reload. The router matches exact paths and
   has no params; add them when a second surface needs them. Profiles and
@@ -1333,7 +1411,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 400 and rising; every bug found gets a regression
+- **Tests are the contract.** 422 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.
