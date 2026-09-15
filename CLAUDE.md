@@ -13,7 +13,7 @@ making architectural changes.
 ## Current state
 
 Phases 00–06 are complete; phase 07 — calibration and launch — is what is
-left. **438 tests passing**, lint clean, migration round-trips, frontend
+left. **439 tests passing**, lint clean, migration round-trips, frontend
 builds, and the whole loop — pair, unlock, request, reply — has been driven
 end to end in a browser at phone and laptop width.
 
@@ -94,10 +94,10 @@ silently makes the whole mechanic impossible for whoever is on the short side
 — twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
-pytest                       # 438 tests, no network, no models needed
+pytest                       # 439 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
 python scripts/manage.py reviewer --username you   # open the review queue
-python scripts/manage.py admin --username you      # open the admin portal (/admin)
+python scripts/manage.py admin --username you      # open the admin portal (see src/services/paths.js)
 python scripts/check_storage.py  # why uploads are or are not working
 python scripts/check_contrast.py --token "<jwt>"   # text nobody can read, both themes
 python scripts/calibrate.py --sweep   # what the unlock dials cost, before real data
@@ -421,7 +421,7 @@ added after the first: a finished profile waits for an admin.
 each segment and was removed with the campus layer. This one is different in
 kind — nobody waits for a slot, they wait for a person to look — and it was
 asked for explicitly. `onboarding → waitlisted → active`: `submit` puts a
-finished profile on the waitlist, an admin approves it in `/admin`, and
+finished profile on the waitlist, an admin approves it in the portal, and
 approval is the whole gate, because everything that shows a person to anyone
 or lets them reach anyone already asks for `active` (`require_participant`,
 pair eligibility). There is no second list to keep in sync.
@@ -453,9 +453,24 @@ answer reports about members; admins decide who becomes one.
 
 **A grant has to reach a tab that is already open.** The app reads the account
 once, on load, and staff access is granted from a shell while the person is
-signed in — so right after `manage.py admin`, `/admin` still bounced to the
+signed in — so right after `manage.py admin`, the portal still bounced to the
 pair view until a reload, which reads exactly like the grant did not work. The
-router now re-reads the account before refusing `/admin` or `/review`.
+router now re-reads the account before refusing the portal or `/review`.
+
+**The portal lives at a random path, not `/admin`** — `ADMIN_PATH` in
+`src/services/paths.js`, overridable with `VITE_ADMIN_PATH`, so nobody reaches
+it by guessing. It is a curtain, not a lock: the path ships in the JavaScript
+bundle like every route. The lock is `is_admin`, and `/api/admin` returns the
+router's own 404 to anybody it does not name, *signed out included*, with a
+body identical to a path that does not exist (`current_user`'s 401 would have
+confirmed something was there).
+
+That last part needed a fix elsewhere: the SPA fallback used to serve
+`index.html` with a 200 for any unknown path, `/api/...` included, so a missing
+endpoint looked like a working one returning HTML. `SPAStaticFiles` now never
+falls back for `api`, `ws` or `media_uploads`. It checks `Path(path).parts`,
+because Starlette normalises the path with `os.path.normpath` and on Windows a
+split on "/" matched nothing.
 
 That was a real trade and the cost is worth stating plainly. The campus domain
 was the identity anchor — it bounded the population to people who genuinely
@@ -1460,7 +1475,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 438 and rising; every bug found gets a regression
+- **Tests are the contract.** 439 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.

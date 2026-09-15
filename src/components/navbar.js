@@ -2,6 +2,7 @@ import { createElement } from '../utils/dom.js';
 import api from '../services/api.js';
 import router from '../services/router.js';
 import store from '../services/store.js';
+import { ADMIN_PATH } from '../services/paths.js';
 
 /* One bar across every signed-in screen.
 
@@ -166,7 +167,7 @@ export function reviewerLink(nav) {
   // the bar would be an empty door for every member who is not staff.
   if (me?.is_admin) {
     const link = createElement('button', { className: 'nav__out', type: 'button' }, 'Admin');
-    link.addEventListener('click', () => router.go('/admin'));
+    link.addEventListener('click', () => router.go(ADMIN_PATH));
     inner.insertBefore(link, out);
   }
 }

@@ -127,6 +127,22 @@ async def test_the_portal_is_not_found_for_anyone_but_an_admin(
 
 
 @pytest.mark.asyncio
+async def test_signed_out_the_portal_looks_like_nothing_is_there(client):
+    """Not 401: a "sign in" answer at a path where made-up paths get 404 is the
+    confirmation the portal's hidden address exists to avoid."""
+    def shape(response):
+        body = response.json()
+        body["error"].pop("request_id", None)
+        return response.status_code, body
+
+    made_up = shape(await client.get("/api/definitely-not-a-route"))
+    assert made_up[0] == 404, "an unknown API path must be a 404, not the SPA's HTML"
+    for headers in ({}, {"Authorization": "Bearer not-a-token"}):
+        for path in ("/api/admin/waitlist", "/api/admin/invited"):
+            assert shape(await client.get(path, headers=headers)) == made_up, f"{path} {headers}"
+
+
+@pytest.mark.asyncio
 async def test_nothing_over_http_can_make_an_admin(client, db_sessionmaker, fake_storage):
     from backend.app import create_app
 

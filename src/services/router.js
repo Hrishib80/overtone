@@ -1,5 +1,6 @@
 import store from './store.js';
 import api from './api.js';
+import { ADMIN_PATH } from './paths.js';
 
 /* Where an account belongs, given its status. Onboarding is a funnel: you
    cannot skip ahead, and you cannot fall back into a step you've finished. */
@@ -21,7 +22,7 @@ const PUBLIC_ROUTES = new Set(['/', '/join', '/signin']);
    these are the places you can only get to once you are through it. */
 const ALSO_ALLOWED = {
   pending_verification: new Set(['/onboarding', '/settings']),
-  active: new Set(['/messages', '/type', '/chosen', '/profile', '/settings', '/review', '/admin']),
+  active: new Set(['/messages', '/type', '/chosen', '/profile', '/settings', '/review', ADMIN_PATH]),
   // Waiting for approval: nothing that involves another person, but their own
   // profile stays editable — a profile sent back is fixed from there — and so
   // do settings.
@@ -78,17 +79,17 @@ class Router {
     if (path === '/review' && !me.is_reviewer) return home;
     // The same for the admin portal: a hint, with `/api/admin` answering 404
     // to anybody the column does not name.
-    if (path === '/admin' && !me.is_admin) return home;
+    if (path === ADMIN_PATH && !me.is_admin) return home;
     return ALSO_ALLOWED[me.status]?.has(path) ? null : home;
   }
 
   async resolve(path) {
     // Staff access is granted from the command line, usually while the person
     // is already signed in — so the account this tab loaded may predate the
-    // grant, and `/admin` would bounce to the pair view until a reload. Before
+    // grant, and the portal would bounce to the pair view until a reload. Before
     // refusing a staff page, ask once more.
     const { me, token } = store.getState();
-    const staffPage = (path === '/admin' && !me?.is_admin) || (path === '/review' && !me?.is_reviewer);
+    const staffPage = (path === ADMIN_PATH && !me?.is_admin) || (path === '/review' && !me?.is_reviewer);
     if (token && me && staffPage) {
       try {
         store.setState({ me: await api.getMe() });

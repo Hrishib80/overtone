@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 
 DEFAULT_BASE = "http://127.0.0.1:5173"
@@ -47,7 +48,8 @@ SCREENS = [
     ("profile", "/profile", True),
     ("settings", "/settings", True),
     ("review", "/review", True),
-    ("admin", "/admin", True),
+    # Kept in step with src/services/paths.js; override with VITE_ADMIN_PATH.
+    ("admin", "/" + os.environ.get("VITE_ADMIN_PATH", "desk-5pngn47wv5na").strip("/"), True),
 ]
 
 # Shared by every check below. The page is measured, not the stylesheet:

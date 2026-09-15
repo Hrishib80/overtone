@@ -70,6 +70,19 @@ class SPAStaticFiles(StaticFiles):
 
     async def get_response(self, path, scope):
         def is_client_route() -> bool:
+            # Never for the API, the socket or uploaded media. The fallback used
+            # to answer a made-up `/api/...` path with the SPA's HTML and a 200,
+            # which made a missing endpoint look like a working one returning
+            # nonsense — the stale-server confusion in CLAUDE.md — and meant a
+            # route that answered 404 on purpose stood out from ones that
+            # simply do not exist.
+            # `parts`, not a split on "/": Starlette hands this path through
+            # `os.path.normpath`, which on Windows turns the separators into
+            # backslashes — a "/" split matched nothing locally while it would
+            # have worked on a Linux server.
+            parts = Path(path).parts
+            if parts and parts[0] in ("api", "ws", "media_uploads"):
+                return False
             return "." not in Path(path).name
 
         try:

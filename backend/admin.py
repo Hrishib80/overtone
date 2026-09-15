@@ -21,14 +21,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from backend.auth import current_user
+from backend.auth import current_user, require_auth
 from backend.database import User, UserStatus, get_db, utcnow
-from backend.errors import AppError, NotFound
+from backend.errors import AppError, NotAuthenticated, NotFound
 from backend.logging_config import get_logger
 from backend.moderation import staff_profile
 
@@ -37,9 +38,24 @@ log = get_logger(__name__)
 MAX_NOTE = 1000
 
 
-async def require_admin(user: User = Depends(current_user)) -> User:
+async def require_admin(
+    authorization: str | None = Header(default=None), db: AsyncSession = Depends(get_db)
+) -> User:
+    """404 for everybody who is not an admin — including somebody signed out.
+
+    Built on `current_user` rather than depending on it, because that raises
+    401 without a token, and a 401 at `/api/admin/...` where every made-up path
+    gets a 404 is exactly the confirmation this is meant not to give.
+    """
+    # The router's own 404, not `NotFound`: the body has to match what a path
+    # that does not exist returns, or the difference is the tell.
+    nothing_here = StarletteHTTPException(status_code=404)
+    try:
+        user = await current_user(user_id=await require_auth(authorization), db=db)
+    except NotAuthenticated:
+        raise nothing_here from None
     if not user.is_admin or user.status == UserStatus.suspended:
-        raise NotFound("Not found.")
+        raise nothing_here
     return user
 
 

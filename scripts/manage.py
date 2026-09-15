@@ -122,7 +122,10 @@ async def cmd_admin(args: argparse.Namespace) -> int:
         await db.commit()
 
     # ASCII only: this prints to a Windows console, where a dash arrives garbled.
-    verb = "no longer an admin" if args.revoke else "is now an admin. The portal is at /admin"
+    # The portal's path is deliberately not printed: it lives in the frontend
+    # (src/services/paths.js, or VITE_ADMIN_PATH), and an Admin link appears
+    # in the navbar for the account once it is granted.
+    verb = "no longer an admin" if args.revoke else "is now an admin. Open it from the navbar Admin link"
     print(f"  @{username} {verb}")
     return 0
 
