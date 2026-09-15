@@ -193,8 +193,10 @@ export default {
               try {
                 await api.sendMessage(entry.id, text);
                 if (thread.status === 'requested') {
-                  // Their reply just opened it; nothing more to announce.
+                  // Their reply just opened it; nothing more to announce, but
+                  // there is a live channel to join now.
                   thread.status = 'open';
+                  goLive();
                 }
               } catch (error) {
                 optimistic.remove();
@@ -224,36 +226,47 @@ export default {
              connects costs immediacy and nothing else. */
           const atBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
 
-          live = joinThread(entry.id, {
-            onMessage: (message) => {
-              // Only follow the conversation down if they were already at the
-              // bottom — yanking the view while somebody is reading back
-              // through a thread is worse than a missed message.
-              const follow = atBottom();
-              const previous = typing.previousElementSibling;
-              if (previous?.classList.contains('bubble-row--theirs')) {
-                previous.querySelector('.bubble__time')?.remove();
-              }
-              log.insertBefore(bubbleFor(message, { fresh: true }), typing);
-              typing.hidden = true;
-              if (follow) log.scrollTop = log.scrollHeight;
+          /* Only for a conversation that is actually open. The server refuses
+             a socket on an unanswered request — it has one message and no live
+             channel, by design — but a browser cannot tell that refusal from a
+             network failure (both close with 1006), so the client used to
+             retry it six times over about 44 seconds, every time somebody
+             opened a request. Joined here when it is open already, and again
+             the moment this person's own reply opens it. */
+          const goLive = () => {
+            if (live) return;
+            live = joinThread(entry.id, {
+              onMessage: (message) => {
+                // Only follow the conversation down if they were already at the
+                // bottom — yanking the view while somebody is reading back
+                // through a thread is worse than a missed message.
+                const follow = atBottom();
+                const previous = typing.previousElementSibling;
+                if (previous?.classList.contains('bubble-row--theirs')) {
+                  previous.querySelector('.bubble__time')?.remove();
+                }
+                log.insertBefore(bubbleFor(message, { fresh: true }), typing);
+                typing.hidden = true;
+                if (follow) log.scrollTop = log.scrollHeight;
 
-              // They wrote, so this is now read by us, and the list badge
-              // behind the sheet is stale either way.
-              api.markRead(entry.id).catch(() => {});
-              refresh();
-            },
-            onRead: () => {
-              for (const node of log.querySelectorAll('.bubble-row--mine')) {
-                node.classList.add('is-read');
-              }
-            },
-            onTyping: (on) => {
-              const follow = atBottom();
-              typing.hidden = !on;
-              if (on && follow) log.scrollTop = log.scrollHeight;
-            },
-          });
+                // They wrote, so this is now read by us, and the list badge
+                // behind the sheet is stale either way.
+                api.markRead(entry.id).catch(() => {});
+                refresh();
+              },
+              onRead: () => {
+                for (const node of log.querySelectorAll('.bubble-row--mine')) {
+                  node.classList.add('is-read');
+                }
+              },
+              onTyping: (on) => {
+                const follow = atBottom();
+                typing.hidden = !on;
+                if (on && follow) log.scrollTop = log.scrollHeight;
+              },
+            });
+          };
+          if (thread.status === 'open') goLive();
 
           wrap.append(bar, log, foot);
           requestAnimationFrame(() => {
@@ -308,6 +321,74 @@ export default {
       const go = createElement('button', { className: 'btn', type: 'button' }, 'Back to pairs');
       go.addEventListener('click', () => router.go('/pairs'));
       card.append(go);
+      return card;
+    }
+
+    // ---- a request waiting on you -----------------------------------------
+
+    /* Somebody's one opening message, and the two things you can do with it.
+
+       This function was lost when the inbox became Messages (b31584d): the
+       call to it survived and the definition did not, so from then on anyone
+       with a request waiting got a blank Messages page — `requestCard is not
+       defined` — at exactly the moment the navbar told them to look.
+
+       Declining used to be labelled "Not now", which is a promise the server
+       does not keep: a decline is final in both directions, and the request
+       leaves both inboxes for good. So it says what it does, and asks once
+       more before doing something that cannot be undone. The other person is
+       never told either way. */
+    function requestCard(entry) {
+      const card = createElement('article', { className: 'request' });
+
+      const top = createElement('div', { className: 'request__top' });
+      top.append(
+        avatar(entry.peer),
+        createElement('div', { className: 'request__who' }, [
+          createElement('span', { className: 'request__name' }, entry.peer.display_name || 'Unnamed'),
+          createElement(
+            'span',
+            { className: 'request__when' },
+            entry.last_message?.sent_at ? formatTime(entry.last_message.sent_at) : ''
+          ),
+        ])
+      );
+      card.append(top);
+
+      if (entry.last_message) {
+        card.append(createElement('blockquote', { className: 'request__quote' }, entry.last_message.text));
+      }
+
+      const actions = createElement('div', { className: 'request__actions' });
+      const reply = createElement('button', { className: 'btn request__reply', type: 'button' }, 'Reply');
+      reply.addEventListener('click', () => openThread(entry));
+
+      const pass = createElement(
+        'button',
+        { className: 'btn btn--ghost request__pass', type: 'button' },
+        'Decline'
+      );
+      let armed = false;
+      pass.addEventListener('click', async () => {
+        if (!armed) {
+          armed = true;
+          pass.textContent = 'Decline for good?';
+          pass.setAttribute('aria-live', 'polite');
+          return;
+        }
+        pass.disabled = true;
+        try {
+          await api.declineRequest(entry.id);
+          card.classList.add('is-leaving');
+          card.addEventListener('animationend', () => refresh(), { once: true });
+        } catch (error) {
+          toast(error.message, { error: true });
+          pass.disabled = false;
+        }
+      });
+
+      actions.append(reply, pass);
+      card.append(actions);
       return card;
     }
 
