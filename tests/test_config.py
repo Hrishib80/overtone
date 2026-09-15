@@ -56,3 +56,24 @@ def test_development_tolerates_missing_values():
     settings = Settings(environment="development", database_url="", jwt_secret_key="")
     assert not settings.is_production
     assert settings.emit_json_logs is False
+
+
+def test_the_api_will_not_run_real_models_in_process():
+    """Gigabytes of models inside the API is the one worker placement that
+    takes the site down with the first photo."""
+    with pytest.raises(ValidationError, match="RUN_WORKER_IN_API"):
+        Settings(**PROD | {"run_worker_in_api": True, "use_real_models": True})
+    settings = Settings(**PROD | {"run_worker_in_api": True, "use_real_models": False})
+    assert settings.run_worker_in_api and not settings.real_models_enabled
+
+
+def test_alembic_survives_a_percent_encoded_password():
+    """Supabase passwords with `@` or `#` are percent-encoded in the URL, and
+    Alembic's config is a ConfigParser that reads `%` as interpolation."""
+    from alembic.config import Config
+
+    url = "postgresql+asyncpg://postgres.abc:p%40ss%23word@aws-0-x.pooler.supabase.com:5432/postgres"
+    config = Config()
+    config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
+    assert config.get_main_option("sqlalchemy.url") == url
+    assert config.get_section(config.config_ini_section)["sqlalchemy.url"] == url

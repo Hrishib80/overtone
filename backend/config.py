@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     worker_poll_seconds: float = 2.0
     worker_batch_size: int = 5
     job_max_attempts: int = 5
+    # Run the job loop inside the API process instead of a separate worker.
+    # For a single small instance with the stand-in models; see backend/runner.py.
+    run_worker_in_api: bool = False
 
     # Uploads. Enforced when the signed URL is issued, not after the bytes
     # arrive — the whole point of direct-to-storage is that we never hold them.
@@ -141,6 +144,13 @@ class Settings(BaseSettings):
                 )
             if len(self.jwt_secret_key) < 32:
                 raise ValueError("JWT_SECRET_KEY must be at least 32 characters in production.")
+            if self.run_worker_in_api and self.real_models_enabled:
+                # Gigabytes of models in the API process would take the site
+                # down with the first photo on any instance small enough to be
+                # the reason for running one process.
+                raise ValueError(
+                    "RUN_WORKER_IN_API needs USE_REAL_MODELS=false. Real models run in their own worker."
+                )
 
         return self
 

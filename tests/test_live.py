@@ -418,3 +418,25 @@ async def test_ping_is_answered_on_the_socket_that_asked(socket_room):
     async with Socket(socket_room["room"], socket_room["her"]["access_token"]) as socket:
         await socket.send({"type": "ping"})
         assert await socket.next_event() == {"type": "pong"}
+
+
+def test_a_socket_token_never_reaches_the_logs():
+    """uvicorn logs the full path of every socket, and the token rides in the
+    query string — so it has to be scrubbed before any handler writes it."""
+    import logging
+
+    from backend.logging_config import _redact_tokens
+
+    record = logging.LogRecord(
+        "uvicorn.error",
+        logging.INFO,
+        __file__,
+        1,
+        '%s - "WebSocket %s" [accepted]',
+        ("127.0.0.1:5000", "/ws/signal/abc?token=eyJhbGciOiJIUzI1NiJ9.payload.sig&x=1"),
+        None,
+    )
+    assert _redact_tokens(record)
+    line = record.getMessage()
+    assert "eyJ" not in line and "payload" not in line
+    assert "token=[redacted]&x=1" in line

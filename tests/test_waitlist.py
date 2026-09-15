@@ -130,6 +130,7 @@ async def test_the_portal_is_not_found_for_anyone_but_an_admin(
 async def test_signed_out_the_portal_looks_like_nothing_is_there(client):
     """Not 401: a "sign in" answer at a path where made-up paths get 404 is the
     confirmation the portal's hidden address exists to avoid."""
+
     def shape(response):
         body = response.json()
         body["error"].pop("request_id", None)
@@ -360,3 +361,14 @@ async def test_deleting_an_inviter_leaves_no_row_naming_them(client, db_sessionm
     assert friend_row.status == UserStatus.active, "the people they let in stay members"
     assert friend_row.invited_by_id is None
     assert approved_row.approved_by_id is None
+
+
+def test_production_publishes_no_api_schema(monkeypatch):
+    """The schema names every route, `/api/admin/...` included — publishing it
+    would undo the 404 the portal answers to anybody it does not name."""
+    from backend.app import create_app
+
+    monkeypatch.setattr(settings, "environment", "production")
+    app = create_app()
+    assert app.openapi_url is None
+    assert app.docs_url is None

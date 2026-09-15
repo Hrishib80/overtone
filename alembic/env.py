@@ -30,7 +30,11 @@ if config.config_file_name is not None:
 if not settings.database_url:
     raise RuntimeError("DATABASE_URL is not set; migrations need a target database.")
 
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Escaped because the config is a ConfigParser, which reads `%` as the start
+# of an interpolation. A Supabase password with an `@` or `#` in it has to be
+# percent-encoded in the URL, so the real production URL is exactly the one
+# that fails with "invalid interpolation syntax" — before anything connects.
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
@@ -57,12 +61,29 @@ def _render_item(type_, obj, autogen_context):
     return False
 
 
+def _include_object(obj, name, type_, reflected, compare_to):
+    """Skip a model unique constraint that only repeats the primary key.
+
+    `user_visible_as` and `user_interested_in` declare both a composite primary
+    key and a unique constraint over the same two columns. SQLite keeps both;
+    Postgres folds the duplicate into the primary key (which takes its name), so
+    on Postgres `alembic check` reported the constraint as missing for ever,
+    while the uniqueness it asks for was being enforced all along.
+    """
+    if type_ == "unique_constraint" and not reflected and compare_to is None:
+        primary = {column.name for column in obj.table.primary_key.columns}
+        if primary and {column.name for column in obj.columns} == primary:
+            return False
+    return True
+
+
 def _configure(connection: Connection | None = None, **kwargs) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
         compare_server_default=True,
+        include_object=_include_object,
         render_item=_render_item,
         render_as_batch=settings.database_url.startswith("sqlite"),
         **kwargs,

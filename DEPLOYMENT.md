@@ -1,147 +1,129 @@
 # Deployment
 
-One web service: FastAPI serves the built SPA, the API, media and the chat
-WebSocket from a single HTTPS origin. Same-origin keeps login and live chat
-simple and avoids cross-origin credential problems.
+Three pieces, all on free plans:
 
-A second **worker** service runs model inference — face embedding, speaker
-embedding, transcription, text embedding — off the request path. See *The
-worker* below.
+| Piece | Host | What it serves |
+|---|---|---|
+| Site | **Vercel** | the built SPA (`dist/`), from `vercel.json` |
+| API | **Render** (free web service, Docker) | `/api`, the chat socket `/ws`, and the job loop, from `render.yaml` |
+| Data | **Supabase** | Postgres (session pooler) and the public `uploads` bucket |
+
+The site is split from the API so that the landing page stays instant while the
+free API instance is asleep. The browser talks to the API cross-origin with a
+bearer token (no cookies), so CORS needs exactly one origin and nothing else.
+
+## What the free plan costs you
+
+- **The API sleeps after ~15 idle minutes.** The next request waits for a cold
+  start, typically 30–50 seconds. The site loads immediately; sign-in and the
+  first pair are what wait. Upgrading the Render service to Starter removes it.
+- **There is no room for real models.** The job loop runs inside the API
+  (`RUN_WORKER_IN_API=true`) with the stand-in models (`USE_REAL_MODELS=false`).
+  That means pairs are drawn without face similarity — which is also what the
+  pairing does anyway below 100 people per segment — and **there is no automatic
+  photo screening**. Every profile waits for a person (`REQUIRE_APPROVAL=true`),
+  and that is the moderation. Invited members skip that queue, so give invite
+  codes only to people you trust to vouch.
+- **Migrations run at start** (`MIGRATE_ON_START=true`), because the free plan
+  has no pre-deploy command. That is only safe with one instance, which is all
+  the free plan has.
 
 ## Environment
 
-Set these on the host, never in source control:
+### Render (API)
 
-- `ENVIRONMENT=production`
-- `DATABASE_URL` — PostgreSQL, `postgresql+asyncpg://…`
-- `JWT_SECRET_KEY` — at least 32 characters; production refuses to start below that
-- `ALLOWED_ORIGINS` — the exact public origin, no trailing slash. A wildcard is
-  rejected in production because browser requests carry credentials
-- `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_BUCKET`
-- `SARVAM_API_KEY` — speech-to-text; worker only
-- `SENTRY_DSN` — optional
-- `LOG_LEVEL` — defaults to `INFO`; logs are JSON in production, console elsewhere
+Set by `render.yaml`: `ENVIRONMENT=production`, `MIGRATE_ON_START`,
+`RUN_WORKER_IN_API`, `USE_REAL_MODELS=false`, `REQUIRE_APPROVAL`,
+`STORAGE_PROVIDER=supabase`, `SUPABASE_BUCKET=uploads`, a small database pool,
+and a generated `JWT_SECRET_KEY`.
 
-Configuration is validated at import. A production process with a missing or
-weak value fails immediately rather than at the first request.
+Asked for when the blueprint is applied (never committed):
 
-## Migrations
+| Key | Value |
+|---|---|
+| `DATABASE_URL` | `postgresql+asyncpg://postgres.<project>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres` — percent-encode `@ # / %` in the password |
+| `SUPABASE_URL` | `https://<project>.supabase.co` |
+| `SUPABASE_KEY` | the **server** key (`sb_secret_…` or legacy `service_role`) — never the anon/publishable key |
+| `ALLOWED_ORIGINS` | the Vercel origin, e.g. `https://overtone.vercel.app` — no trailing slash |
+| `PUBLIC_WEB_URL` | the same origin; invite links point at it |
 
-The schema is owned by Alembic. `create_all` is gone.
+Production refuses to start with a missing value, a short JWT secret, a
+wildcard origin, local storage, or real models inside the API process.
 
-```sh
-alembic upgrade head
-```
+### Vercel (site)
 
-Run this as a **release command, before** the new instances roll out — not from
-the container's start command, which would race when several instances boot at
-once. `alembic check` fails CI if the models and migrations have drifted apart.
+Build-time variables (Project → Settings → Environment Variables, Production):
 
-To adopt an existing database that already has the tables:
+| Key | Value |
+|---|---|
+| `VITE_API_URL` | the Render URL, e.g. `https://overtone-api.onrender.com` — no `/api` |
+| `VITE_ADMIN_PATH` | optional; a new random path for the admin portal |
 
-```sh
-alembic stamp head     # records the baseline without re-running it
-```
+A change to either needs a redeploy, because Vite bakes them into the bundle.
 
-## Reference data and campuses
+## First deploy
 
-After migrating, load the seeded reference rows (81 prompts, 38 gender
-identities, 30 sexualities). It upserts, so it is safe to re-run on every
-deploy and picks up edits to the JSON seed files:
+1. **Supabase** — the database is already migrated, seeded, and has the staff
+   account. For a fresh project instead:
+   ```sh
+   DATABASE_URL=… alembic upgrade head
+   DATABASE_URL=… python scripts/manage.py seed
+   DATABASE_URL=… python scripts/manage.py staff --username <name>   # asks for the password
+   ```
+   Create a **public** bucket named `uploads` (Storage → New bucket).
+2. **Render** — New → Blueprint → pick the GitHub repo → it reads `render.yaml`.
+   Fill in the five values above (`ALLOWED_ORIGINS` and `PUBLIC_WEB_URL` can be a
+   placeholder until Vercel gives you a URL). Wait for `/api/ready` to answer.
+3. **Vercel** — Add New → Project → import the same repo. Framework preset
+   "Other"; `vercel.json` supplies the build. Set `VITE_API_URL`, deploy.
+4. Put the Vercel origin into Render's `ALLOWED_ORIGINS` and `PUBLIC_WEB_URL`
+   (Render redeploys on save).
+5. Open the site, sign in as the staff account — it lands on the portal.
 
-```sh
-python scripts/manage.py seed
-```
+## Operating it
 
-Then create the campus. Caps are **per segment** — one headline number fills
-one side in a week and starves the other:
+- **The admin portal** is at `/<VITE_ADMIN_PATH>` (default in
+  `src/services/paths.js`). Only accounts with `is_admin` see it; the API
+  answers 404 to everyone else, signed in or not, and publishes no schema.
+- **Staff accounts** are made from a machine with the database URL, never over
+  HTTP: `python scripts/manage.py staff --username <name>`. Running it again
+  resets that account's password — the only password reset there is.
+- **Reviewers** (the report queue) are members: `manage.py reviewer --username`.
+- **Balance**: `DATABASE_URL=… python scripts/manage.py stats`.
+- **Health**: `GET /api/health` (liveness, no dependencies) and `GET /api/ready`
+  (checks the database). Every response carries `X-Request-ID`, which is on
+  every log line for that request.
+- **Logs** are JSON. Socket tokens are redacted from them before they are
+  written.
 
-```sh
-python scripts/manage.py scope-create \
-    --slug iitm --name "IIT Madras" \
-    --domain smail.iitm.ac.in --domain iitm.ac.in \
-    --cap man=600 --cap woman=600
-```
+## Supabase: the data API is closed
 
-A segment with no cap row is uncapped. Signups whose email domain matches no
-scope are refused, so the domain list *is* the access control.
+Supabase publishes every `public` table over its REST API to the `anon` role,
+whose key is designed to be public. Migration `e5a1f7c3b820` turns row-level
+security on for every table and revokes `anon`/`authenticated` — including as a
+default privilege, so later tables start closed. The app is unaffected: it
+connects as the table owner. Supabase's security advisor should show no
+"RLS disabled" warnings; if one appears after a migration, a table was created
+some way that bypassed the default privileges.
 
-```sh
-python scripts/manage.py scope-list        # occupancy and waitlist depth
-python scripts/manage.py waitlist-sweep    # expire stale invites, invite next
-```
+## Moving to real models later
 
-`waitlist-sweep` should run on a schedule (hourly is plenty). Without it,
-invitations that nobody claims hold their slot forever.
+1. Build a worker image from `requirements-worker.txt` (ffmpeg, torch,
+   insightface, nudenet, speechbrain, sentence-transformers) and bake the models
+   in with `python scripts/fetch_models.py` (~2.6 GB).
+2. Run `python worker.py` with `USE_REAL_MODELS=true` and `SARVAM_API_KEY`, on
+   ~4 GB of RAM.
+3. On the API, set `RUN_WORKER_IN_API=false`. Jobs are claimed with
+   `FOR UPDATE SKIP LOCKED`, so the switch can overlap safely.
 
-## Build and run
+Photos processed by the stand-ins have stand-in embeddings; re-enqueue them
+once the real worker is up if face similarity matters for existing members.
 
-```sh
-docker build -t overtone .
-docker run -p 8000:8000 --env-file .env overtone
-```
+## Scaling past one instance
 
-The image is deliberately small — no torch, no models, no ffmpeg. The container
-listens on `PORT`.
-
-## The worker
-
-A second process, from the same repo:
-
-```sh
-pip install -r requirements-worker.txt
-python scripts/fetch_models.py       # ~2.6 GB, cache it in the image layer
-USE_REAL_MODELS=true python worker.py
-```
-
-It owns every model; the API loads none, which is what keeps the API image
-small. `python worker.py --status` prints which implementation each role would
-use and touches nothing — safe to run anywhere.
-
-**Real models are opt-in outside production.** Without `USE_REAL_MODELS=true`
-the worker runs deterministic stubs, so a development machine never downloads
-gigabytes by surprise. In production they are always on, and a missing model is
-fatal at startup rather than silently degrading.
-
-Speech-to-text needs `SARVAM_API_KEY`. Nothing else needs a credential — face,
-voice and text models are local.
-
-Jobs live in the `jobs` table, so the worker needs only `DATABASE_URL`. A job
-survives a restart, retries with exponential backoff, and is parked as `failed`
-after five attempts with its payload and traceback intact. Anything left
-`running` by a killed worker is requeued after fifteen minutes.
-
-## Health checks
-
-- `GET /api/health` — liveness. Touches no dependency, so a database blip does
-  not cause a restart loop.
-- `GET /api/ready` — readiness. Checks the database; returns 503 when it cannot
-  serve. Point the load balancer at this one.
-
-Every response carries `X-Request-ID`, which also appears on every log line for
-that request. A user reporting a failure can hand you an id you can grep.
-
-## Scaling
-
-Chat connections are held in process, so **run one web instance** for now.
-Phase 03 moves fanout to Redis pub/sub, after which the tier scales normally.
-
-Workers scale freely: claiming uses `FOR UPDATE SKIP LOCKED`, so several can
-pull from the same table without blocking each other.
-
-The database URL points at Supabase's transaction pooler, which cannot hold
-prepared statements between checkouts. The engine disables asyncpg's statement
-cache automatically when it sees a pooler host — don't remove that, or every
-query after the first fails with a duplicate-prepared-statement error.
-
-## Frontend
-
-No `VITE_API_URL` or `VITE_WS_URL` is needed in this single-service setup — the
-site calls its own `/api` and `/ws` paths. For a separately hosted frontend, set
-`VITE_API_URL` to the API origin and `VITE_WS_URL` to `wss://…/ws` at build time.
-
-Voice and video calling has been removed, so no TURN or STUN configuration is
-required. The microphone permission remains for recording the voice prompt.
+Chat fan-out is in-process until `REDIS_URL` is set. Before running two API
+instances: set `REDIS_URL`, set `MIGRATE_ON_START=false` and run migrations as a
+release step, and move the job loop to its own worker.
 
 ## Local development
 
@@ -149,9 +131,11 @@ required. The microphone permission remains for recording the voice prompt.
 pip install -r requirements-dev.txt
 npm install
 
+export DATABASE_URL="sqlite+aiosqlite:///./dev.db"   # .env may point at Supabase
 alembic upgrade head
-python -m uvicorn backend.app:app --reload    # API on :8000
-npm run dev                                   # Vite on :5173, proxying to :8000
+python scripts/manage.py seed
+python -m uvicorn backend.app:app --port 8000        # no --reload on Windows
+npx vite --port 5173 --strictPort
 
 pytest
 ruff check . && ruff format --check .

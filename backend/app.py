@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -54,12 +56,24 @@ async def lifespan(app: FastAPI):
     # up when the first person tries to upload is one found too late.
     storage.check_configuration()
 
+    worker_stopping = asyncio.Event()
+    worker_task = None
+    if settings.run_worker_in_api and engine is not None:
+        from backend.runner import loop as job_loop
+
+        worker_task = asyncio.create_task(job_loop(worker_stopping), name="job-loop")
+
     log.info(
         "app_started",
         environment=settings.environment,
         storage_provider=settings.storage_provider,
     )
     yield
+    if worker_task is not None:
+        # Let the job in hand finish rather than abandoning it half-written.
+        worker_stopping.set()
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(worker_task, timeout=20)
     if engine is not None:
         await engine.dispose()
     log.info("app_stopped")
@@ -102,6 +116,10 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         docs_url=None if settings.is_production else "/docs",
         redoc_url=None,
+        # Not only the docs page: the schema behind it lists every route, and
+        # `/api/admin` answering 404 to strangers means nothing if
+        # `/openapi.json` names it for them.
+        openapi_url=None if settings.is_production else "/openapi.json",
     )
 
     app.add_middleware(

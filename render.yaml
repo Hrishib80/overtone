@@ -1,0 +1,59 @@
+# Render blueprint for the API. The site is on Vercel (see vercel.json), so this
+# is the API, the chat socket and the job loop, in one free instance.
+#
+# Free-plan realities this is shaped around:
+#   * it sleeps after ~15 idle minutes, and the first request after that waits
+#     for a cold start; the site itself stays instant because it is on Vercel
+#   * there is no pre-deploy command, so migrations run at start
+#     (MIGRATE_ON_START) — safe only because there is exactly one instance
+#   * there is no room for real models, so the job loop runs inside the API
+#     with the stand-ins (RUN_WORKER_IN_API, USE_REAL_MODELS=false), and every
+#     profile is approved by a person instead (REQUIRE_APPROVAL)
+#
+# Values marked `sync: false` are asked for when the blueprint is applied and
+# are never stored in this file.
+services:
+  - type: web
+    name: overtone-api
+    runtime: docker
+    plan: free
+    # Nearest Render region to the Supabase project (ap-northeast-1, Tokyo).
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: MIGRATE_ON_START
+        value: "true"
+      - key: RUN_WORKER_IN_API
+        value: "true"
+      - key: USE_REAL_MODELS
+        value: "false"
+      - key: REQUIRE_APPROVAL
+        value: "true"
+      - key: STORAGE_PROVIDER
+        value: supabase
+      - key: SUPABASE_BUCKET
+        value: uploads
+      # Supabase's session pooler allows few connections on the free tier, and
+      # one instance needs very few.
+      - key: DB_POOL_SIZE
+        value: "3"
+      - key: DB_MAX_OVERFLOW
+        value: "2"
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      # The Vercel site's origin, e.g. https://overtone.vercel.app — no slash.
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # The same origin; invite links point at it.
+      - key: PUBLIC_WEB_URL
+        sync: false

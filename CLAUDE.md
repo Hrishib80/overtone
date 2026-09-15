@@ -13,7 +13,7 @@ making architectural changes.
 ## Current state
 
 Phases 00–06 are complete; phase 07 — calibration and launch — is what is
-left. **439 tests passing**, lint clean, migration round-trips, frontend
+left. **450 tests passing**, lint clean, migration round-trips, frontend
 builds, and the whole loop — pair, unlock, request, reply — has been driven
 end to end in a browser at phone and laptop width.
 
@@ -94,10 +94,11 @@ silently makes the whole mechanic impossible for whoever is on the short side
 — twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
-pytest                       # 439 tests, no network, no models needed
+pytest                       # 450 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
 python scripts/manage.py reviewer --username you   # open the review queue
 python scripts/manage.py admin --username you      # open the admin portal (see src/services/paths.js)
+python scripts/manage.py staff --username name     # a portal-only account; password on stdin
 python scripts/check_storage.py  # why uploads are or are not working
 python scripts/check_contrast.py --token "<jwt>"   # text nobody can read, both themes
 python scripts/calibrate.py --sweep   # what the unlock dials cost, before real data
@@ -865,6 +866,46 @@ an open tab is refused with 409, and the withdrawal is committed before the
 refusal, because the route rolls back on an error and a pair left `shown` would
 be served straight back.
 
+### Deployment, and the staff account
+
+**Site on Vercel, API on Render's free plan, data on Supabase.** The runbook is
+`DEPLOYMENT.md`; `render.yaml` and `vercel.json` are the config. Split rather
+than one origin because the free API instance sleeps after ~15 idle minutes,
+and a landing page that takes 50 seconds to appear loses people before they
+know what the app is — split, only sign-in waits. The browser holds a bearer
+token rather than a cookie, so going cross-origin cost one CORS origin and
+nothing else.
+
+**The job loop runs inside the API** (`RUN_WORKER_IN_API`, `backend/runner.py`)
+with the stand-in models, because a free instance has 512 MB and the real ones
+need several GB. That trade is real: no face similarity (pairing ignores it
+under 100 per segment anyway) and **no automatic photo screening**. What
+carries moderation instead is `REQUIRE_APPROVAL` — a person looks at every
+profile — which is why invite codes, the one way around that queue, only come
+from members an admin approved. Production refuses `RUN_WORKER_IN_API` with
+real models, since that combination takes the site down with the first photo.
+
+**The admin is a `staff` account, not a member.** `tweetappleios` has
+`status = staff`: no profile, never in the pool, no invite code, refused by
+`require_member` (so it cannot finish a profile and turn itself into an
+applicant), and the router sends it to the portal from every other path. The
+person deciding who joins is not also a person in the pool being judged by
+the people they let in. Made and password-reset only by `manage.py staff`,
+which reads the password from stdin so it never lands in shell history.
+`status` is a plain string column, so the new value needed no migration.
+
+**Supabase's data API is closed** (migration `e5a1f7c3b820`). Every `public`
+table is published over REST to the `anon` role, whose key is public by
+design, and RLS was off — `users` and its password hashes were one request
+away for anybody with the project URL. RLS is on with no policies, and the
+`anon`/`authenticated` grants are revoked, as a default privilege too so later
+tables start closed. The app is unaffected: it connects as the table owner.
+
+**Supabase was rebuilt, not migrated.** It held seven tables from the inherited
+prototype and no `alembic_version`, so there was nothing to upgrade from — the
+tables and bucket were backed up to `D:\Projects\Overtone-backups\2026-09-15`
+(outside the repo), dropped, and the schema built from the migrations.
+
 ### Infrastructure
 
 **Postgres-backed job queue, not Redis.** Jobs survive restarts and are
@@ -1259,6 +1300,31 @@ Each of these cost real debugging time. Do not reintroduce them.
 - **Demo accounts wear out.** A viewer sees each pair once, so repeated
   Playwright runs exhaust a pool and the next run looks like a broken app.
   Reseed before trusting a failure.
+- **Alembic's config is a ConfigParser, and `%` is interpolation.** A Supabase
+  password containing `@` or `#` has to be percent-encoded in the URL, so the
+  real production URL was exactly the one `alembic` refused with "invalid
+  interpolation syntax" before connecting. `env.py` escapes `%` as `%%`.
+- **Postgres folds a unique constraint that repeats the primary key into it.**
+  `user_visible_as` and `user_interested_in` declare both over the same two
+  columns; SQLite keeps both, Postgres keeps one (the PK, under the unique
+  constraint's name). `alembic check` passed locally and failed against
+  Supabase for ever, though uniqueness was enforced all along. `env.py`'s
+  `include_object` skips a unique constraint identical to the primary key.
+- **Hiding `/docs` does not hide the schema.** `docs_url=None` left
+  `openapi_url` on, so production published every route — `/api/admin/...`
+  included, which made the portal's 404-to-strangers pointless. Found by
+  running the app in production mode, not by reading it.
+- **The chat socket's token was in the host's logs.** A browser cannot set
+  headers on a WebSocket, so the token rides in the query string, and uvicorn
+  logs every path in full: each opened chat wrote a working 24-hour sign-in
+  token to stdout. A logging filter redacts `token=` before any handler writes.
+- **Behind a proxy, `--proxy-headers` alone does nothing.** uvicorn only trusts
+  forwarded headers from `127.0.0.1` by default, and Render's proxy is not
+  there, so every visitor would have had the proxy's address — one shared
+  rate-limit bucket for the whole site. The image passes
+  `--forwarded-allow-ips='*'`.
+- **The Docker build did not copy `public/`.** It built cleanly and every
+  favicon was a 404 in the image, which nothing in the build output mentions.
 
 ---
 
@@ -1400,8 +1466,14 @@ an action or introduces content; nothing here loops or decorates.
   forward manually to demo them.
 - **Tests run against SQLite only.** CI verifies migrations against Postgres,
   but business logic isn't exercised against pgvector.
-- Git history contains three committed SQLite blobs (untracked since, but still
-  in history). Worth a rewrite before the first push if that matters.
+- **Photos are served from a public bucket by unguessable URL.** Anybody holding
+  a photo's URL can load it without signing in, including a held or rejected
+  one if its URL ever leaked. Signed reads would close that at the cost of
+  URLs that expire under the page.
+- **The per-address rate limit trusts `X-Forwarded-For`** (`--forwarded-allow-ips='*'`,
+  required behind Render's proxy). A client can prepend its own address to
+  dodge the loose per-address limits; the per-account limits, which are the
+  real brute-force defence, are unaffected.
 - **`signaling._is_participant` opens `AsyncSessionLocal` directly** rather
   than taking an injected session, because it lives inside a socket that
   outlives any request. Tests put the test database there
@@ -1475,7 +1547,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 439 and rising; every bug found gets a regression
+- **Tests are the contract.** 450 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.

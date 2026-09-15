@@ -9,6 +9,7 @@ failure can hand you something you can actually grep for.
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from contextvars import ContextVar
 
@@ -60,6 +61,7 @@ def configure_logging(level: str = "INFO", json_output: bool = False) -> None:
             processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, renderer],
         )
     )
+    handler.addFilter(_redact_tokens)
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(level)
@@ -69,6 +71,31 @@ def configure_logging(level: str = "INFO", json_output: bool = False) -> None:
         stdlib_logger = logging.getLogger(name)
         stdlib_logger.handlers = []
         stdlib_logger.propagate = True
+
+
+_TOKEN_IN_QUERY = re.compile(r"(token=)[^&\s\"']+")
+_REDACTED = r"\g<1>[redacted]"
+
+
+def _redact_tokens(record: logging.LogRecord) -> bool:
+    """Strip `?token=` from anything a log line carries.
+
+    The chat socket authenticates with the session token in its query string,
+    because a browser cannot set headers on a WebSocket — and uvicorn logs the
+    full path of every request and socket. Unredacted, every opened chat wrote
+    a working sign-in token into the host's logs, readable by anyone with log
+    access for as long as the token lives.
+    """
+    if isinstance(record.msg, str) and "token=" in record.msg:
+        record.msg = _TOKEN_IN_QUERY.sub(_REDACTED, record.msg)
+    if record.args:
+        args = record.args if isinstance(record.args, tuple) else (record.args,)
+        cleaned = tuple(
+            _TOKEN_IN_QUERY.sub(_REDACTED, a) if isinstance(a, str) and "token=" in a else a for a in args
+        )
+        if cleaned != args:
+            record.args = cleaned
+    return True
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
