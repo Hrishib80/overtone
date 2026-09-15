@@ -108,7 +108,7 @@ export default {
           { className: 'people__muted' },
           reach.admirers
             ? 'Everyone who keeps choosing you is already in Messages.'
-            : 'This fills up on its own. Somebody has to be shown you several times and pick you each time before they appear here — you cannot make it happen faster.'
+            : 'This fills up on its own. Somebody has to be shown you several times and pick you each time before they appear here, you cannot make it happen faster.'
         )
       );
       const go = createElement('button', { className: 'btn', type: 'button' }, 'Go to pairs');

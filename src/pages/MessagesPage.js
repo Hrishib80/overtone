@@ -315,7 +315,7 @@ export default {
         createElement(
           'p',
           { className: 'muted' },
-          'Conversations start from My type or from Keep choosing you — write to somebody there and it lands here.'
+          'Conversations start from My type or from Keep choosing you, write to somebody there and it lands here.'
         )
       );
       const go = createElement('button', { className: 'btn', type: 'button' }, 'Back to pairs');

@@ -38,7 +38,7 @@ export default {
         body.replaceChildren(
           empty(
             'Nobody yet',
-            'Keep choosing. Pick the same person often enough and their profile opens up here — and they are not told, so there is no cost to taking your time.'
+            'Keep choosing. Pick the same person often enough and their profile opens up here, and they are not told, so there is no cost to taking your time.'
           )
         );
         return;
