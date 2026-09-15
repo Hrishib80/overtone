@@ -6,6 +6,8 @@ requires-python = ">=3.12"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# So a bare `pytest` imports `backend` the way `python -m pytest` does; CI runs the former.
+pythonpath = ["."]
 asyncio_mode = "strict"
 addopts = "-q --strict-markers"
 filterwarnings = [
