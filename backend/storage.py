@@ -187,6 +187,23 @@ async def create_signed_upload(user_id: str, kind: str, content_type: str) -> Si
     )
 
 
+def _is_missing_object(response: httpx.Response) -> bool:
+    """Supabase answers a missing object with HTTP 400, not 404, and puts the
+    404 in the body: `{"statusCode": "404", "error": "not_found", ...}`.
+
+    Read as a failure, an upload that never arrived came back as "Could not
+    verify the upload" — a 503 saying storage is down — instead of asking the
+    person to try again.
+    """
+    if response.status_code != 400:
+        return False
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    return str(body.get("statusCode")) == "404" or body.get("error") == "not_found"
+
+
 async def head(key: str) -> tuple[bool, int | None]:
     """Confirm the bytes actually arrived, and how many.
 
@@ -203,7 +220,7 @@ async def head(key: str) -> tuple[bool, int | None]:
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(url, headers=_headers())
-            if response.status_code == 404:
+            if response.status_code == 404 or _is_missing_object(response):
                 return False, None
             response.raise_for_status()
             info = response.json()
