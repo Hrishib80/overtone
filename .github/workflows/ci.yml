@@ -40,7 +40,7 @@ jobs:
       - name: Worker starts and reports its models
         env:
           ENVIRONMENT: test
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           JWT_SECRET_KEY: ci-secret-key-that-is-long-enough-for-checks
         run: python worker.py --status
 
@@ -49,7 +49,9 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # pgvector's image: the schema creates the `vector` extension, which
+        # plain postgres does not ship.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: overtone
           POSTGRES_PASSWORD: overtone
