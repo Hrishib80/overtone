@@ -13,7 +13,7 @@ making architectural changes.
 ## Current state
 
 Phases 00–06 are complete; phase 07 — calibration and launch — is what is
-left. **450 tests passing**, lint clean, migration round-trips, frontend
+left. **457 tests passing**, lint clean, migration round-trips, frontend
 builds, and the whole loop — pair, unlock, request, reply — has been driven
 end to end in a browser at phone and laptop width.
 
@@ -94,7 +94,7 @@ silently makes the whole mechanic impossible for whoever is on the short side
 — twelve women and four men meant no woman could ever unlock anyone.
 
 ```sh
-pytest                       # 450 tests, no network, no models needed
+pytest                       # 457 tests, no network, no models needed
 python scripts/manage.py stats   # pool size per segment — the number to watch
 python scripts/manage.py reviewer --username you   # open the review queue
 python scripts/manage.py admin --username you      # open the admin portal (see src/services/paths.js)
@@ -901,6 +901,14 @@ away for anybody with the project URL. RLS is on with no policies, and the
 `anon`/`authenticated` grants are revoked, as a default privilege too so later
 tables start closed. The app is unaffected: it connects as the table owner.
 
+**The database lives in the API's region.** Render's nearest region is
+Singapore, and the first Supabase project was in Tokyo: every request made
+several round trips between the two, so a bare `SELECT 1` behind the API took
+about 0.7s and a page of data felt slow on an idle, warm instance. Supabase
+cannot move a project between regions, so a new one was made in
+`ap-southeast-1` while the database was still empty. Keep the two co-located;
+a latency problem that looks like slow code is usually this.
+
 **Supabase was rebuilt, not migrated.** It held seven tables from the inherited
 prototype and no `alembic_version`, so there was nothing to upgrade from — the
 tables and bucket were backed up to `D:\Projects\Overtone-backups\2026-09-15`
@@ -1323,6 +1331,11 @@ Each of these cost real debugging time. Do not reintroduce them.
   there, so every visitor would have had the proxy's address — one shared
   rate-limit bucket for the whole site. The image passes
   `--forwarded-allow-ips='*'`.
+- **The dashboard's project URL has `/rest/v1/` on the end.** The Data API
+  page shows `https://<ref>.supabase.co/rest/v1/`, the obvious thing to copy
+  into `SUPABASE_URL` — and every storage call became
+  `/rest/v1//storage/v1/...` and 404'd with no mention of a URL. `config.py`
+  keeps only the scheme and host, whatever was pasted.
 - **The Docker build did not copy `public/`.** It built cleanly and every
   favicon was a 404 in the image, which nothing in the build output mentions.
 
@@ -1547,7 +1560,7 @@ an action or introduces content; nothing here loops or decorates.
 
 ## Conventions
 
-- **Tests are the contract.** 450 and rising; every bug found gets a regression
+- **Tests are the contract.** 457 and rising; every bug found gets a regression
   test. `tests/test_pairing.py` (55) splits pure selection logic from DB wiring
   deliberately — check the module docstring before adding to it, and the same
   split is repeated in `test_affinity.py` and `test_preference.py`.

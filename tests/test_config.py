@@ -77,3 +77,18 @@ def test_alembic_survives_a_percent_encoded_password():
     config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
     assert config.get_main_option("sqlalchemy.url") == url
     assert config.get_section(config.config_ini_section)["sqlalchemy.url"] == url
+
+
+@pytest.mark.parametrize(
+    "pasted",
+    [
+        "https://abc.supabase.co",
+        "https://abc.supabase.co/",
+        "https://abc.supabase.co/rest/v1/",
+        " https://abc.supabase.co/rest/v1 ",
+    ],
+)
+def test_the_supabase_url_is_the_project_origin_whatever_was_pasted(pasted):
+    """The dashboard's Data API page shows the URL with `/rest/v1/` on the end,
+    and storage calls built on that 404."""
+    assert Settings(**PROD | {"supabase_url": pasted}).supabase_url == "https://abc.supabase.co"

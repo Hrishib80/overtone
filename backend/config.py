@@ -10,6 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -111,6 +112,25 @@ class Settings(BaseSettings):
     @classmethod
     def _upper_log_level(cls, value: str) -> str:
         return value.upper()
+
+    @field_validator("supabase_url")
+    @classmethod
+    def _project_origin_only(cls, value: str) -> str:
+        """Keep `https://<ref>.supabase.co` and drop any path.
+
+        The dashboard's Data API page shows the project URL as
+        `https://<ref>.supabase.co/rest/v1/`, which is the natural thing to
+        copy — and every storage call built on it went to
+        `/rest/v1//storage/v1/...` and failed with a 404 that says nothing
+        about a URL.
+        """
+        value = value.strip()
+        if not value:
+            return value
+        parts = urlsplit(value)
+        if not parts.scheme or not parts.netloc:
+            return value.rstrip("/")
+        return f"{parts.scheme}://{parts.netloc}"
 
     @model_validator(mode="after")
     def _check_required(self) -> Settings:

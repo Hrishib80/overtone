@@ -17,7 +17,9 @@ services:
     name: overtone-api
     runtime: docker
     plan: free
-    # Nearest Render region to the Supabase project (ap-northeast-1, Tokyo).
+    # The same region as the Supabase project (ap-southeast-1, Singapore). The
+    # first project was in Tokyo, and every request paid several round trips
+    # between the two, about 0.7s on even a trivial request.
     region: singapore
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
