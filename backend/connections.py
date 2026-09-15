@@ -41,7 +41,7 @@ from backend.database import (
 from backend.errors import AppError, Conflict, NotAuthorized, NotFound
 from backend.logging_config import get_logger
 from backend.profile_view import full_profile_view, primary_photo_url
-from backend.safety import blocked_ids, is_blocked
+from backend.safety import blocked_ids, hidden_accounts, is_blocked
 
 log = get_logger(__name__)
 
@@ -138,7 +138,7 @@ async def send_request(
     # Deliberately the same message a stranger gets. Confirming that a
     # specific person blocked you is information the blocker did not agree to
     # share, and it is the thing that turns a block into a provocation.
-    if await is_blocked(db, sender.id, recipient_id):
+    if await is_blocked(db, sender.id, recipient_id) or await hidden_accounts(db, {recipient_id}):
         raise NotAuthorized("You can't reach that person.")
     # Either direction earns the message. Unlocking them is the original
     # route; *them* having unlocked you is the new one, and it is the same
@@ -211,7 +211,9 @@ async def post_message(db: AsyncSession, *, sender: User, connection_id: str, te
     connection = await _load_for(db, connection_id, sender.id)
     body = _clean(text)
 
-    if await is_blocked(db, sender.id, peer_id(connection, sender.id)):
+    other = peer_id(connection, sender.id)
+    # The same words for a block and a suspension, so neither is announced.
+    if await is_blocked(db, sender.id, other) or await hidden_accounts(db, {other}):
         raise Conflict("That conversation is closed.")
     if connection.status == ConnectionStatus.declined:
         raise Conflict("That conversation is closed.")
@@ -325,10 +327,19 @@ async def counts(db: AsyncSession, user: User) -> dict[str, int]:
     ).all()
 
     connected_peers = {b if a == user.id else a for _, a, b, _, _ in rows}
-    open_ids = [cid for cid, _, _, status, _ in rows if status == ConnectionStatus.open]
+    unlocked_ids = await unlocked_subject_ids(db, user.id)
+    admirer_list = await admirer_ids(db, user.id)
+    separated = await blocked_ids(db, user.id) | await hidden_accounts(
+        db, connected_peers | set(unlocked_ids) | set(admirer_list)
+    )
+
+    # A conversation with somebody who is hidden is hidden too — the same rule
+    # `inbox()` applies, which `test_counts_agree_with_the_inbox` holds these to.
+    visible_rows = [row for row in rows if (row[2] if row[1] == user.id else row[1]) not in separated]
+    open_ids = [cid for cid, _, _, status, _ in visible_rows if status == ConnectionStatus.open]
     requests = sum(
         1
-        for _, _, _, status, initiator in rows
+        for _, _, _, status, initiator in visible_rows
         if status == ConnectionStatus.requested and initiator != user.id
     )
 
@@ -346,11 +357,10 @@ async def counts(db: AsyncSession, user: User) -> dict[str, int]:
             )
         ) or 0
 
-    separated = await blocked_ids(db, user.id)
     hidden = connected_peers | separated
 
-    unlocked = sum(1 for s in await unlocked_subject_ids(db, user.id) if s not in hidden)
-    admirers = sum(1 for v in await admirer_ids(db, user.id) if v not in hidden)
+    unlocked = sum(1 for s in unlocked_ids if s not in hidden)
+    admirers = sum(1 for v in admirer_list if v not in hidden)
 
     return {
         "type": unlocked,
@@ -422,12 +432,23 @@ async def inbox(db: AsyncSession, user: User) -> dict[str, Any]:
     conversations: list[dict[str, Any]] = []
     incoming: list[dict[str, Any]] = []
     sent: list[dict[str, Any]] = []
-    connected_peers: set[str] = set()
+    connected_peers: set[str] = {peer_id(c, user.id) for c in connections}
+
+    unlocked_ids = await unlocked_subject_ids(db, user.id)
+    admirer_list = await admirer_ids(db, user.id)
+    # Blocked either way, or suspended. Blocking also clears the affinity, so
+    # for blocks this is belt and braces; for suspension it is the whole
+    # mechanism, read here rather than written into rows so that lifting a
+    # suspension puts every group back as it was.
+    separated = await blocked_ids(db, user.id) | await hidden_accounts(
+        db, connected_peers | set(unlocked_ids) | set(admirer_list)
+    )
 
     for connection in connections:
         other = peer_id(connection, user.id)
-        connected_peers.add(other)
-        if connection.status == ConnectionStatus.declined:
+        # Still counted as connected above, so a hidden peer cannot fall back
+        # into the unlocked prompt below either.
+        if connection.status == ConnectionStatus.declined or other in separated:
             continue
 
         last = last_by_connection.get(connection.id)
@@ -446,13 +467,9 @@ async def inbox(db: AsyncSession, user: User) -> dict[str, Any]:
         else:
             incoming.append(entry)
 
-    # Blocking clears the affinity, so this is belt and braces — but the
-    # inbox is the one place a blocked person reappearing would be most
-    # visible, and the query costs nothing.
-    separated = await blocked_ids(db, user.id)
     unlocked = [
         await full_profile_view(db, subject_id)
-        for subject_id in await unlocked_subject_ids(db, user.id)
+        for subject_id in unlocked_ids
         if subject_id not in connected_peers and subject_id not in separated
     ]
 
@@ -462,11 +479,11 @@ async def inbox(db: AsyncSession, user: User) -> dict[str, Any]:
     # make the inbox read as two inboxes.
     admirers = [
         await full_profile_view(db, viewer_id)
-        for viewer_id in await admirer_ids(db, user.id)
+        for viewer_id in admirer_list
         if viewer_id not in connected_peers and viewer_id not in separated
     ]
 
-    admirer_count, seen_by = await audience(db, user.id)
+    admirer_count, seen_by = await audience(db, user.id, excluding=separated)
     return {
         "unlocked": unlocked,
         "admirers": admirers,

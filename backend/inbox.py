@@ -15,13 +15,16 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend import connections, signaling
-from backend.auth import require_member
+from backend.auth import require_participant
 from backend.database import User, get_db
 from backend.logging_config import get_logger
 from backend.ratelimit import SEND_REQUEST, consume
 
 log = get_logger(__name__)
-router = APIRouter(prefix="/api/connections", tags=["connections"])
+# On the router as well as each route, so a route added later cannot forget it.
+router = APIRouter(
+    prefix="/api/connections", tags=["connections"], dependencies=[Depends(require_participant)]
+)
 
 
 class RequestBody(BaseModel):
@@ -39,14 +42,14 @@ class MessageBody(BaseModel):
 
 @router.get("")
 async def get_inbox(
-    user: User = Depends(require_member), db: AsyncSession = Depends(get_db)
+    user: User = Depends(require_participant), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     return await connections.inbox(db, user)
 
 
 @router.get("/counts")
 async def get_counts(
-    user: User = Depends(require_member), db: AsyncSession = Depends(get_db)
+    user: User = Depends(require_participant), db: AsyncSession = Depends(get_db)
 ) -> dict[str, int]:
     """Just the three numbers on the navbar.
 
@@ -59,7 +62,7 @@ async def get_counts(
 @router.post("/requests", status_code=201)
 async def create_request(
     body: RequestBody,
-    user: User = Depends(require_member),
+    user: User = Depends(require_participant),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     # Before the work, not after: a refused request should not have created
@@ -87,7 +90,7 @@ async def get_messages(
     connection_id: str,
     limit: int = 50,
     before: str | None = None,
-    user: User = Depends(require_member),
+    user: User = Depends(require_participant),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     connection, rows = await connections.messages(
@@ -105,7 +108,7 @@ async def get_messages(
 async def create_message(
     connection_id: str,
     body: MessageBody,
-    user: User = Depends(require_member),
+    user: User = Depends(require_participant),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     message = await connections.post_message(db, sender=user, connection_id=connection_id, text=body.text)
@@ -121,7 +124,7 @@ async def create_message(
 @router.post("/{connection_id}/decline")
 async def decline_request(
     connection_id: str,
-    user: User = Depends(require_member),
+    user: User = Depends(require_participant),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     connection = await connections.decline(db, user=user, connection_id=connection_id)
@@ -133,7 +136,7 @@ async def decline_request(
 @router.post("/{connection_id}/read")
 async def mark_read(
     connection_id: str,
-    user: User = Depends(require_member),
+    user: User = Depends(require_participant),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, int]:
     count = await connections.mark_read(db, user=user, connection_id=connection_id)

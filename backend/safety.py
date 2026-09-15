@@ -40,6 +40,7 @@ from backend.database import (
     Report,
     ReportReason,
     User,
+    UserStatus,
     get_db,
     pair_key,
     utcnow,
@@ -71,6 +72,30 @@ async def blocked_ids(db: AsyncSession, user_id: str) -> set[str]:
     for blocker, blocked in rows:
         out.add(blocked if blocker == user_id else blocker)
     return out
+
+
+async def hidden_accounts(db: AsyncSession, ids) -> set[str]:
+    """Which of these accounts nobody else may currently be shown or reach.
+
+    Suspended accounts, and any marked deleted. Suspension is a judgement about
+    how somebody treated other people, so it removes them from *other people's*
+    experience — My type, Keep choosing you, Messages, the counts, a first
+    message, a reply and a socket — and from nothing of their own.
+
+    Read at request time rather than written into connection or affinity rows,
+    because a suspension can be lifted and lifting it has to put every surface
+    back exactly as it was. Pair generation has always filtered on status
+    directly; this is the same rule for everything else.
+    """
+    wanted = {i for i in ids if i}
+    if not wanted:
+        return set()
+    rows = await db.execute(
+        select(User.id)
+        .where(User.id.in_(wanted))
+        .where(or_(User.status.in_((UserStatus.suspended, UserStatus.deleted)), User.deleted_at.is_not(None)))
+    )
+    return set(rows.scalars().all())
 
 
 async def is_blocked(db: AsyncSession, a: str, b: str) -> bool:

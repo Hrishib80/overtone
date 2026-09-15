@@ -53,8 +53,11 @@ async def test_next_requires_authentication(client):
 
 
 @pytest.mark.asyncio
-async def test_next_is_null_when_nobody_is_eligible(client, verified, fake_storage):
-    response = await client.get("/api/pairs/next", headers=verified["headers"])
+async def test_next_is_null_when_nobody_is_eligible(client, fake_storage):
+    # A finished account, alone in the pool. An unfinished one is refused
+    # outright now — see test_unfinished_accounts.py.
+    alone = await onboard(client, "alone", visible_as=["man"], interested_in=["woman"], store=fake_storage)
+    response = await client.get("/api/pairs/next", headers=alone["headers"])
     assert response.status_code == 200
     assert response.json() == {"pair": None}
 
@@ -160,9 +163,10 @@ async def test_decide_rejects_someone_elses_pairing(client, db_sessionmaker, fak
 
 
 @pytest.mark.asyncio
-async def test_decide_rejects_an_unknown_pairing(client, verified, fake_storage):
+async def test_decide_rejects_an_unknown_pairing(client, fake_storage):
+    member = await onboard(client, "member", visible_as=["man"], interested_in=["woman"], store=fake_storage)
     response = await client.post(
-        "/api/pairs/does-not-exist/decide", headers=verified["headers"], json={"chosen_id": "x"}
+        "/api/pairs/does-not-exist/decide", headers=member["headers"], json={"chosen_id": "x"}
     )
     assert response.status_code == 404
 

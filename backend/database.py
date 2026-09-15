@@ -546,6 +546,11 @@ class PairStatus(enum.StrEnum):
     shown = "shown"  # served to the viewer, awaiting their choice
     decided = "decided"  # the viewer chose
     expired = "expired"  # a round-2 window passed with the pair never shown
+    # Somebody in it stopped being showable to this viewer before it was
+    # served or decided — blocked, suspended, consent withdrawn, left the
+    # audience. Kept rather than deleted, like every other pairing: the table is
+    # also the impression history.
+    withdrawn = "withdrawn"
 
 
 class Pairing(Base):

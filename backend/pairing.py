@@ -42,7 +42,7 @@ from backend.database import (
 from backend.database import (
     Rating as RatingRow,
 )
-from backend.errors import AppError, NotAuthorized, NotFound
+from backend.errors import AppError, Conflict, NotAuthorized, NotFound
 from backend.logging_config import get_logger
 from backend.preference import load_weights as load_preference
 from backend.preference import observe as observe_preference
@@ -167,6 +167,33 @@ def blended_similarity(a: Candidate, b: Candidate) -> float:
     return sum(score * w for score, w in parts) / total_weight
 
 
+def _eligible(query, *, viewer_id: str, segment: str, viewer_visible_as: list[str], excluded: set[str]):
+    """Who may be put in front of this viewer under `segment`, as one filter.
+
+    Shared by generating a pair and by serving or deciding one that was
+    generated earlier. They used to be one query and one assumption: that
+    anybody eligible when a pair was made is still eligible when it is shown.
+    Round 2 arrives 48 to 72 hours later, so that assumption was wrong for
+    every block, suspension, consent withdrawal and change of audience in
+    between — and round 2 is the one that reveals a full profile.
+    """
+    return (
+        query.join(UserVisibleAs, UserVisibleAs.user_id == User.id)
+        .join(ProfileEmbedding, ProfileEmbedding.user_id == User.id)
+        .where(User.status == UserStatus.active)
+        .where(User.deleted_at.is_(None))
+        .where(User.id != viewer_id)
+        .where(User.id.not_in(excluded) if excluded else true())
+        .where(UserVisibleAs.segment == segment)
+        .where(ProfileEmbedding.face_vector.is_not(None))
+        .where(
+            User.id.in_(
+                select(UserInterestedIn.user_id).where(UserInterestedIn.segment.in_(viewer_visible_as))
+            )
+        )
+    )
+
+
 async def _eligible_candidates(
     db: AsyncSession, viewer: User, segment: str, viewer_visible_as: list[str]
 ) -> list[Candidate]:
@@ -182,19 +209,12 @@ async def _eligible_candidates(
     excluded = await blocked_ids(db, viewer.id)
     rows = (
         await db.execute(
-            select(User, ProfileEmbedding)
-            .join(UserVisibleAs, UserVisibleAs.user_id == User.id)
-            .join(ProfileEmbedding, ProfileEmbedding.user_id == User.id)
-            .where(User.status == UserStatus.active)
-            .where(User.deleted_at.is_(None))
-            .where(User.id != viewer.id)
-            .where(User.id.not_in(excluded) if excluded else true())
-            .where(UserVisibleAs.segment == segment)
-            .where(ProfileEmbedding.face_vector.is_not(None))
-            .where(
-                User.id.in_(
-                    select(UserInterestedIn.user_id).where(UserInterestedIn.segment.in_(viewer_visible_as))
-                )
+            _eligible(
+                select(User, ProfileEmbedding),
+                viewer_id=viewer.id,
+                segment=segment,
+                viewer_visible_as=viewer_visible_as,
+                excluded=excluded,
             )
         )
     ).all()
@@ -411,6 +431,60 @@ async def generate_one_pair(
     return None
 
 
+async def still_showable(db: AsyncSession, viewer: User, pairing: Pairing) -> bool:
+    """Whether both people in a pairing may still be put in front of this
+    viewer, by exactly the rule that generated it — and whether the viewer
+    still wants to see this audience at all."""
+    interested = set(
+        (await db.execute(select(UserInterestedIn.segment).where(UserInterestedIn.user_id == viewer.id)))
+        .scalars()
+        .all()
+    )
+    if pairing.segment not in interested:
+        return False
+    visible = sorted(
+        (await db.execute(select(UserVisibleAs.segment).where(UserVisibleAs.user_id == viewer.id)))
+        .scalars()
+        .all()
+    )
+    if not visible:
+        return False
+
+    subjects = {pairing.subject_a_id, pairing.subject_b_id}
+    excluded = await blocked_ids(db, viewer.id)
+    if subjects & excluded:
+        return False
+    rows = (
+        await db.execute(
+            _eligible(
+                select(User.id, ProfileEmbedding.face_vector),
+                viewer_id=viewer.id,
+                segment=pairing.segment,
+                viewer_visible_as=visible,
+                excluded=excluded,
+            ).where(User.id.in_(subjects))
+        )
+    ).all()
+    # The vector is checked here as well as in SQL, the same way
+    # `_eligible_candidates` does. On SQLite the column is JSON, and a withdrawn
+    # vector is stored as the JSON text `null` rather than SQL NULL, so
+    # `IS NOT NULL` lets it through; Postgres stores a real NULL. Without this
+    # the test suite, and every local database, would serve a round-2 profile
+    # of somebody who withdrew consent while production would not.
+    found = {user_id for user_id, face in rows if _as_vector(face)}
+    return found == subjects
+
+
+def _withdraw(pairing: Pairing) -> None:
+    pairing.status = PairStatus.withdrawn
+    log.info(
+        "pairing_withdrawn",
+        pairing_id=pairing.id,
+        viewer_id=pairing.viewer_id,
+        round=str(pairing.round),
+    )
+
+
 async def _outstanding_pair(db: AsyncSession, viewer_id: str) -> Pairing | None:
     """A pairing already served to this viewer but never decided.
 
@@ -457,26 +531,48 @@ async def next_pair(db: AsyncSession, viewer: User, *, rng: random.Random | None
     Priority: resume anything already shown and undecided; then a due round-2
     pair (a promise made to them earlier); then anything already queued; then
     freshly generated.
+
+    Everything made earlier is checked again before it is served, and
+    withdrawn if it no longer passes; see `_eligible` for why.
     """
-    outstanding = await _outstanding_pair(db, viewer.id)
-    if outstanding is not None:
-        return outstanding
+    while (outstanding := await _outstanding_pair(db, viewer.id)) is not None:
+        if await still_showable(db, viewer, outstanding):
+            return outstanding
+        _withdraw(outstanding)
+        await db.flush()
 
-    due = await _promote_due_round_two(db, viewer.id)
-    if due is not None:
-        due.status = PairStatus.shown
-        due.shown_at = utcnow()
-        return due
+    while (due := await _promote_due_round_two(db, viewer.id)) is not None:
+        if await still_showable(db, viewer, due):
+            due.status = PairStatus.shown
+            due.shown_at = utcnow()
+            return due
+        _withdraw(due)
+        await db.flush()
 
-    queued = await db.execute(
-        select(Pairing)
-        .where(Pairing.viewer_id == viewer.id)
-        .where(Pairing.round == PairRound.round_1)
-        .where(Pairing.status == PairStatus.pending)
-        .order_by(Pairing.position)
-        .limit(1)
-    )
-    pairing = queued.scalars().first()
+    pairing = None
+    while pairing is None:
+        queued = (
+            (
+                await db.execute(
+                    select(Pairing)
+                    .where(Pairing.viewer_id == viewer.id)
+                    .where(Pairing.round == PairRound.round_1)
+                    .where(Pairing.status == PairStatus.pending)
+                    .order_by(Pairing.position)
+                    .limit(1)
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if queued is None:
+            break
+        if await still_showable(db, viewer, queued):
+            pairing = queued
+        else:
+            _withdraw(queued)
+            await db.flush()
+
     if pairing is None:
         pairing = await generate_one_pair(db, viewer, rng=rng)
     if pairing is None:
@@ -519,6 +615,16 @@ async def record_decision(db: AsyncSession, viewer: User, pairing_id: str, chose
         raise AppError("That pair has already been decided.")
     if chosen_id not in (pairing.subject_a_id, pairing.subject_b_id):
         raise AppError("That choice isn't one of the two people shown.")
+    if not await still_showable(db, viewer, pairing):
+        # Served before something changed — a block, a suspension, a consent
+        # withdrawn — and still open in the viewer's tab. Answering it would
+        # feed a rating and this viewer's record of somebody they can no longer
+        # be shown. The withdrawal is committed before refusing, because the
+        # route rolls back on an error and a pairing left `shown` would be
+        # served straight back on the next load.
+        _withdraw(pairing)
+        await db.commit()
+        raise Conflict("That pair is no longer available.")
 
     loser_id = pairing.subject_b_id if chosen_id == pairing.subject_a_id else pairing.subject_a_id
     kind = RatingKind.visual if pairing.round == PairRound.round_1 else RatingKind.profile

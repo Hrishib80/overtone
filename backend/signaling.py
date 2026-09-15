@@ -44,7 +44,7 @@ from backend.auth import verify_ws_token
 from backend.config import settings
 from backend.database import AsyncSessionLocal, Connection, ConnectionStatus
 from backend.logging_config import get_logger
-from backend.safety import is_blocked
+from backend.safety import hidden_accounts, is_blocked
 
 log = get_logger(__name__)
 router = APIRouter()
@@ -84,7 +84,12 @@ async def _is_participant(connection_id: str, user_id: str) -> bool:
         # would have noticed, and this is the check that holds while one is
         # already connected.
         other = connection.user_b_id if connection.user_a_id == user_id else connection.user_a_id
-        return not await is_blocked(db, user_id, other)
+        if await is_blocked(db, user_id, other):
+            return False
+        # Either side suspended: a suspended account has no live channel to
+        # anybody, and nobody has one to them. Checked on every connect, so a
+        # socket opened before a suspension does not survive its next reconnect.
+        return not await hidden_accounts(db, {user_id, other})
 
 
 async def message_sent(connection_id: str, message: dict[str, Any], sender_id: str) -> None:

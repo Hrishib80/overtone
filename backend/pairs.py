@@ -13,14 +13,15 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.auth import require_member
+from backend.auth import require_participant
 from backend.database import PairRound, User, get_db
 from backend.logging_config import get_logger
 from backend.pairing import next_pair, record_decision
 from backend.profile_view import full_profile_view, photo_only_view
 
 log = get_logger(__name__)
-router = APIRouter(prefix="/api/pairs", tags=["pairs"])
+# On the router as well as each route, so a route added later cannot forget it.
+router = APIRouter(prefix="/api/pairs", tags=["pairs"], dependencies=[Depends(require_participant)])
 
 
 async def _serialise(db: AsyncSession, pairing) -> dict[str, Any]:
@@ -48,7 +49,7 @@ class DecideRequest(BaseModel):
 
 @router.get("/next")
 async def get_next_pair(
-    user: User = Depends(require_member), db: AsyncSession = Depends(get_db)
+    user: User = Depends(require_participant), db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     pairing = await next_pair(db, user)
     await db.commit()
@@ -62,7 +63,7 @@ async def get_next_pair(
 async def decide_pair(
     pairing_id: str,
     req: DecideRequest,
-    user: User = Depends(require_member),
+    user: User = Depends(require_participant),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     decision = await record_decision(db, user, pairing_id, req.chosen_id)

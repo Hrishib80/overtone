@@ -130,6 +130,27 @@ async def require_member(user: User = Depends(current_user)) -> User:
     return user
 
 
+async def require_participant(user: User = Depends(require_member)) -> User:
+    """Everything that puts somebody in front of other people, or other people
+    in front of them: being served pairs, and the inbox.
+
+    `require_member` only ever turned away *suspended* accounts, so an account
+    still in onboarding passed it. Onboarding is where consent is given, a
+    photo is added and screened, and the profile other people will read is
+    written — and it asks who you want to see first. An account that answered
+    that one question and stopped was served real pairs of other members'
+    photos, could unlock people, and could write to them, having done none of
+    the rest.
+
+    Profile, media and account stay on `require_member`, because those are the
+    steps that finish joining; guarding them too would lock somebody out of the
+    only way past this check.
+    """
+    if user.status != UserStatus.active:
+        raise NotAuthorized("Finish setting up your profile first.")
+    return user
+
+
 def verify_ws_token(token: str) -> str | None:
     """Token check for the WebSocket handshake, which cannot send headers."""
     try:

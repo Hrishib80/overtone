@@ -20,7 +20,7 @@ and a message may be sent — under the same rule that keeps ratings private.
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import Affinity, AffinityState, utcnow
@@ -188,7 +188,9 @@ async def admirer_ids(db: AsyncSession, subject_id: str) -> list[str]:
     )
 
 
-async def audience(db: AsyncSession, subject_id: str) -> tuple[int, int]:
+async def audience(
+    db: AsyncSession, subject_id: str, *, excluding: set[str] | frozenset[str] = frozenset()
+) -> tuple[int, int]:
     """How many people have actually compared this person, and how many of
     them kept choosing them. `(admirers, seen_by)`.
 
@@ -196,22 +198,23 @@ async def audience(db: AsyncSession, subject_id: str) -> tuple[int, int]:
     everyone the pair loop could theoretically show them to — a person who has
     never been put in front of anybody has an audience of nought, not a
     hundred, and the share has to say so.
+
+    `excluding` is the people this person cannot currently be shown — blocked
+    either way, or suspended. They leave both numbers. Left in, the page's
+    grid and its headline disagreed, and the gap was explained to the reader
+    as "you are already talking to 1 of them" about somebody they were not
+    talking to at all.
     """
-    seen_by = int(
-        await db.scalar(
-            select(func.count(Affinity.id)).where(Affinity.subject_id == subject_id).where(Affinity.shown > 0)
-        )
-        or 0
-    )
-    admirers = int(
-        await db.scalar(
-            select(func.count(Affinity.id))
+    rows = (
+        await db.execute(
+            select(Affinity.viewer_id, Affinity.state)
             .where(Affinity.subject_id == subject_id)
-            .where(Affinity.state == AffinityState.unlocked)
+            .where(Affinity.shown > 0)
         )
-        or 0
-    )
-    return admirers, seen_by
+    ).all()
+    counted = [(viewer, state) for viewer, state in rows if viewer not in excluding]
+    admirers = sum(1 for _, state in counted if state == AffinityState.unlocked)
+    return admirers, len(counted)
 
 
 def share_of(admirers: int, seen_by: int) -> int | None:
