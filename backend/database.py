@@ -133,6 +133,12 @@ class UserStatus(enum.StrEnum):
     # consent and its right to delete itself. Suspension is a decision about
     # somebody's conduct towards others, not a forfeit of what is theirs.
     suspended = "suspended"
+    # An account that exists only to run the admin portal. It is not a member:
+    # no profile, never in the pool, no invite code, and nothing but the portal
+    # will serve it. Made by `manage.py staff`, never by the join form, so the
+    # account that decides who joins cannot also be a person in the pool
+    # judging the people it let in.
+    staff = "staff"
     deleted = "deleted"
 
 

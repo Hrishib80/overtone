@@ -14,6 +14,8 @@ const HOME_FOR_STATUS = {
   waitlisted: '/waitlist',
   active: '/pairs',
   suspended: '/suspended',
+  // Runs the portal and nothing else; every other path comes back here.
+  staff: ADMIN_PATH,
 };
 
 const PUBLIC_ROUTES = new Set(['/', '/join', '/signin']);

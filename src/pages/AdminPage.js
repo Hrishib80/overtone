@@ -1,6 +1,7 @@
 import { createElement } from '../utils/dom.js';
 import api from '../services/api.js';
 import router from '../services/router.js';
+import store from '../services/store.js';
 import { toast } from '../utils/toast.js';
 
 /* The admin portal: who joins.
@@ -39,8 +40,15 @@ export default {
 
     const head = createElement('header', { className: 'review__head' });
     const headInner = createElement('div', { className: 'review__head-inner admin__head' });
-    const back = createElement('button', { className: 'review__back', type: 'button' }, '← The app');
-    back.addEventListener('click', () => router.go('/pairs'));
+    // A staff account has no app to go back to — the portal is all of it —
+    // so its way out is signing out.
+    const staff = store.getState().me?.status === 'staff';
+    const back = createElement('button', { className: 'review__back', type: 'button' }, staff ? 'Sign out' : '← The app');
+    back.addEventListener('click', () => {
+      if (!staff) return router.go('/pairs');
+      store.signOut();
+      router.go('/', { replace: true });
+    });
     headInner.append(createElement('h1', { className: 'review__title' }, 'Admin'), back);
 
     const tabs = createElement('div', { className: 'admin__tabs', role: 'tablist', 'aria-label': 'Admin sections' });

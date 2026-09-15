@@ -6,6 +6,11 @@
     python scripts/manage.py reviewer --username someone --revoke
     python scripts/manage.py admin --username someone
     python scripts/manage.py admin --username someone --revoke
+    python scripts/manage.py staff --username someone < password.txt
+
+`staff` makes an account that can reach the admin portal and nothing else. The
+password is read from stdin (or asked for at a terminal), never taken as an
+argument, so it does not land in shell history or a process listing.
 
 `seed` is idempotent — it upserts reference rows, so re-running after editing a
 seed file applies only what changed.
@@ -15,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import getpass
 import sys
 from pathlib import Path
 
@@ -130,11 +136,62 @@ async def cmd_admin(args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_staff(args: argparse.Namespace) -> int:
+    """Create (or reset) an account that runs the admin portal and nothing else.
+
+    Not a member made into an admin: a `staff` account has no profile, is never
+    shown to anybody, cannot invite, and the app sends it to the portal from
+    every other page. Running this again for the same name resets the password,
+    which is the only password reset there is.
+    """
+    from backend import usernames
+    from backend.auth import hash_password
+
+    username = usernames.normalise(args.username.lstrip("@"))
+    problem = usernames.problem(username)
+    # The reserved list is for members; a staff name is chosen by whoever
+    # holds the command line, so only the shape rules apply.
+    if problem and problem != usernames.problem("admin"):
+        print(f"@{username}: {problem}", file=sys.stderr)
+        return 1
+
+    if sys.stdin.isatty():
+        password = getpass.getpass("Password: ")
+        if getpass.getpass("Again: ") != password:
+            print("Those did not match.", file=sys.stderr)
+            return 1
+    else:
+        password = sys.stdin.readline().rstrip("\r\n")
+    if len(password) < 12:
+        print("Use at least 12 characters for an account that decides who joins.", file=sys.stderr)
+        return 1
+
+    async with AsyncSessionLocal() as db:
+        user = (await db.execute(select(User).where(User.username == username))).scalars().first()
+        if user is not None and user.status != UserStatus.staff:
+            print(
+                f"@{username} is a member ({user.status}). Staff accounts are separate; pick another name.",
+                file=sys.stderr,
+            )
+            return 1
+        created = user is None
+        if created:
+            user = User(username=username, display_name="Admin", status=UserStatus.staff)
+            db.add(user)
+        user.password_hash = hash_password(password)
+        user.is_admin = True
+        await db.commit()
+
+    print(f"  @{username} {'created' if created else 'password reset'}; signs in straight to the portal")
+    return 0
+
+
 COMMANDS = {
     "seed": cmd_seed,
     "stats": cmd_stats,
     "reviewer": cmd_reviewer,
     "admin": cmd_admin,
+    "staff": cmd_staff,
 }
 
 
@@ -154,6 +211,9 @@ def build_parser() -> argparse.ArgumentParser:
     admin = sub.add_parser("admin", help="grant or revoke the admin portal (the waitlist)")
     admin.add_argument("--username", required=True, help="the account to change")
     admin.add_argument("--revoke", action="store_true", help="take it away instead")
+
+    staff = sub.add_parser("staff", help="create an account that can only reach the admin portal")
+    staff.add_argument("--username", required=True, help="the account to create or reset")
 
     return parser
 

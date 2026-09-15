@@ -127,6 +127,12 @@ async def require_member(user: User = Depends(current_user)) -> User:
             "Your account is suspended. You can still delete it, or take back "
             "permission to analyse your photos, from your settings."
         )
+    # A staff account runs the portal and is nobody's match. Refused here
+    # rather than per route: finishing a profile moves an account onto the
+    # waitlist, so a staff account let through `profile` would quietly turn
+    # itself into an applicant.
+    if user.status == UserStatus.staff:
+        raise NotAuthorized("This account only runs the admin portal.")
     return user
 
 
