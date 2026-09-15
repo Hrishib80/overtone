@@ -1,22 +1,13 @@
-# API image. Deliberately small: no torch, no models, no ffmpeg — inference
-# lives in the worker image (phase 02), which is built from requirements-worker.txt.
-
-FROM node:22-bookworm-slim AS frontend-build
-
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-COPY index.html vite.config.js ./
-COPY src ./src
-# The icons and manifest. Without this the build succeeds and every tab icon
-# is a 404, which nothing in the build output mentions.
-COPY public ./public
-# Only needed when this image serves the site as well; a split deploy builds
-# the site on its own host with its own values.
-ARG VITE_API_URL=""
-ARG VITE_ADMIN_PATH=""
-RUN npm run build
-
+# API image, and only the API. Deliberately small: no torch, no models, no
+# ffmpeg — real inference would live in a worker image built from
+# requirements-worker.txt.
+#
+# No site either. The site is built and served by Vercel; this image used to
+# build a second copy into dist/, which the app then served at the Render URL.
+# That copy was half-working by construction — its chat socket came from an
+# origin ALLOWED_ORIGINS does not list and was refused — so anyone who found the
+# API's address met a site whose chat looked broken. Without dist/, the app mounts no
+# site (backend/app.py checks for the folder) and `/` is a plain 404.
 
 FROM python:3.12-slim AS production
 
@@ -33,7 +24,6 @@ COPY backend ./backend
 COPY alembic ./alembic
 COPY scripts ./scripts
 COPY worker.py alembic.ini pyproject.toml ./
-COPY --from=frontend-build /app/dist ./dist
 
 RUN useradd --create-home --uid 10001 appuser \
     && mkdir -p /app/media_uploads \

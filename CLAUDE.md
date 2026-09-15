@@ -1338,6 +1338,14 @@ Each of these cost real debugging time. Do not reintroduce them.
   keeps only the scheme and host, whatever was pasted.
 - **The Docker build did not copy `public/`.** It built cleanly and every
   favicon was a 404 in the image, which nothing in the build output mentions.
+  Moot now — the image builds no site at all — but it is the general shape: a
+  build that omits a folder of static files succeeds silently.
+- **The API image served a second, half-working copy of the site.** It built
+  `dist/` and the app mounts whatever `dist/` it finds, so the Render URL showed
+  the whole app — whose chat socket came from an origin `ALLOWED_ORIGINS` does
+  not list and was refused. Anybody who found the API's address met a site
+  whose chat looked broken. The site belongs to Vercel alone; the image no
+  longer builds one.
 
 ---
 
